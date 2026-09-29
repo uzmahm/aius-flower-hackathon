@@ -84,7 +84,7 @@ They do NOT need an API key, and their profile never leaves their laptop.
 
 When everyone has joined, be the organiser in another terminal:
 
-    cd backend && uv run flwr chat
+    cd backend && FLWR_CHAT_SUPERLINK=local-agent uv run flwr chat
     /load .
     Plan a relaxing foodie evening in the city for Sam's birthday.
 

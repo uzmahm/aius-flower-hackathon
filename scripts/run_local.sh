@@ -5,7 +5,7 @@
 #   - the live console from frontend/
 #
 # Then, in another terminal, be the organiser:
-#   cd backend && uv run flwr chat
+#   cd backend && FLWR_CHAT_SUPERLINK=local-agent uv run flwr chat
 #   /load .
 #   Plan a relaxing foodie evening in the city for Sofia's birthday. Keep it a surprise.
 #
@@ -62,6 +62,6 @@ uv run python "$ROOT/frontend/server.py" --superlink local-agent \
 
 echo
 echo "Running. Logs in logs/. Console at http://127.0.0.1:8765/"
-echo "Now open another terminal:  cd backend && uv run flwr chat"
+echo "Now open another terminal:  cd backend && FLWR_CHAT_SUPERLINK=local-agent uv run flwr chat"
 echo "Ctrl+C to stop everything."
 wait

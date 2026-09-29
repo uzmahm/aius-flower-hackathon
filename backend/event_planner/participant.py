@@ -61,6 +61,17 @@ def _fallback(phase: str, request: dict[str, Any], user: str) -> dict[str, Any]:
     return {"acknowledged": True}
 
 
+def _send(grid: PolicyGrid, payload: dict[str, Any]) -> None:
+    grid.call(
+        {
+            "type": "function_call",
+            "call_id": llm.call_id(),
+            "name": "push_reply_message",
+            "arguments": json.dumps({"payload": json.dumps(payload)}),
+        }
+    )
+
+
 def _schema_for(request: dict[str, Any]) -> dict[str, policy.Field]:
     phase = request["phase"]
     if phase == "veto":
@@ -92,14 +103,7 @@ def run(agent: AgentSession, context: Context) -> None:
     # The identity round is pure configuration, so there is nothing for a
     # model to decide and no reason to spend a call on it.
     if phase == "identity":
-        grid.call(
-            {
-                "type": "function_call",
-                "call_id": llm.call_id(),
-                "name": "push_reply_message",
-                "arguments": json.dumps({"payload": json.dumps(fallback)}),
-            }
-        )
+        _send(grid, fallback)
     else:
         prompt = json.dumps(
             {
@@ -113,6 +117,10 @@ def run(agent: AgentSession, context: Context) -> None:
             indent=2,
         )
         llm.run_tool_loop(agent, grid, prompt, INSTRUCTIONS)
+        # The model can finish without ever calling the reply tool, and the
+        # leader is blocked waiting for exactly one message from this node.
+        if grid.disclosed is None:
+            _send(grid, fallback)
 
     if grid.disclosed is None:
         raise RuntimeError(f"{user}: no compliant reply was produced for {phase}")

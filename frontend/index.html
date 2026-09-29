@@ -255,6 +255,19 @@
   .feed li { color: var(--ink-soft); }
   .feed li:first-child { color: var(--ink); font-weight: 600; }
 
+  /* ---- who's here -------------------------------------------------------- */
+  .who { margin-top: 10px; }
+  .who h4 small { font: 600 11px var(--body); color: var(--ink-soft); margin-left: 4px; }
+  .who ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; max-height: 150px; overflow: auto; }
+  .who li { display: flex; align-items: center; gap: 7px; }
+  .who li .where { margin-left: auto; font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+  .who li.off { opacity: .55; }
+  .who li .hint { color: var(--ink-soft); font-size: 11px; }
+  .pip { width: 8px; height: 8px; border-radius: 50%; background: #c9a7b8; flex: none; }
+  .pip.on { background: #3fbf7f; }
+  .presence { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-soft); }
+  .agent.offline .tag, .agent.offline .bubble { opacity: .55; }
+
   .banner {
     margin-top: 10px;
     padding: 8px 12px;
@@ -354,6 +367,10 @@
           <small id="hub-text">Leader on the SuperLink</small>
         </div>
         <div class="banner" id="banner" hidden></div>
+        <div class="feed who" id="who-box" hidden>
+          <h4>Who's here<small id="who-count"></small></h4>
+          <ul id="who"></ul>
+        </div>
         <div class="feed">
           <h4>What's happening</h4>
           <ol id="feed"></ol>
@@ -436,6 +453,8 @@ const slotText = slot => { const [a, b] = slot.split("-"); return `${hour(a)} �
 const nonEmpty = v => v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && !v.length);
 
 let profiles = {};   // user slug -> { display_name, emoji, role, private }
+let REMOTE = {};     // users who joined from another laptop; no profile on this disk
+let NODES = null;    // latest SuperNode list from the server, null until one arrives
 let PEOPLE = {};     // user slug -> { name, emoji, tint, accent, role }
 let ORDER = [];      // user slugs, in the order the columns show them
 let S = fresh();
@@ -444,7 +463,7 @@ function fresh() {
 }
 
 function adoptProfiles(next) {
-  profiles = next || {};
+  profiles = { ...REMOTE, ...(next || {}) };
   rebuild(Object.keys(profiles).sort());
 }
 
@@ -455,7 +474,7 @@ function adoptProfiles(next) {
 function adoptRemote(users) {
   const extra = users.filter(u => u && !profiles[u]);
   if (!extra.length) return;
-  for (const u of extra) profiles[u] = { remote: true };
+  for (const u of extra) profiles[u] = REMOTE[u] = { remote: true };
   rebuild([...ORDER, ...extra]);
 }
 
@@ -490,14 +509,44 @@ function buildStations() {
       const who = PEOPLE[p];
       return `<section class="agent" id="agent-${p}" style="--tint:${who.tint};--accent:${who.accent}">
         <header class="tag"><span class="av" id="av-${p}">${who.emoji}</span>
-          <span><b>${esc(who.name)}</b><small id="role-${p}">${who.remote ? "Remote · another laptop" : who.role === "honouree" ? "Guest of honour" : "Participant"}</small></span></header>
+          <span><b>${esc(who.name)}</b><small id="role-${p}">${who.remote ? "Remote · another laptop" : who.role === "honouree" ? "Guest of honour" : "Participant"}</small>
+          <span class="presence" id="presence-${p}"></span></span></header>
         <div class="bubble" id="bubble-${p}">Waiting for the leader…</div>
         <div class="private" id="private-${p}"></div>
       </section>`;
     }).join("");
   }
   renderPrivate();
+  renderPresence();
+  renderWho();
   requestAnimationFrame(drawWires);
+}
+
+function renderPresence() {
+  if (!NODES) return;
+  const online = new Set(NODES.filter(n => n.status === "online" && n.user).map(n => n.user));
+  for (const p of ORDER) {
+    const el = $(`presence-${p}`);
+    if (!el) continue;
+    const on = online.has(p);
+    el.innerHTML = `<i class="pip ${on ? "on" : ""}"></i>${on ? "online" : "not joined"}`;
+    $(`agent-${p}`).classList.toggle("offline", !on);
+  }
+}
+
+function renderWho() {
+  if (!NODES) return;
+  const on = NODES.filter(n => n.status === "online").length;
+  $("who-box").hidden = false;
+  $("who-count").textContent = `· ${on} online`;
+  $("who").innerHTML = NODES.length ? NODES.map(n => {
+    const who = n.user && PEOPLE[n.user];
+    const label = who
+      ? `${who.emoji} <b>${esc(who.name)}</b>`
+      : `💻 Node …${esc(n.id.slice(-4))} <span class="hint">name shown after the first prompt</span>`;
+    return `<li class="${n.status === "online" ? "" : "off"}"><i class="pip ${n.status === "online" ? "on" : ""}"></i>
+      <span>${label}</span><span class="where">${n.local ? "this laptop" : "remote"} · ${esc(n.status)}</span></li>`;
+  }).join("") : '<li class="hint">Nobody has joined yet</li>';
 }
 
 function renderPrivate() {
@@ -663,6 +712,14 @@ function reset() {
 
 const handlers = {
   hello(e) { adoptProfiles(e.profiles); },
+
+  /* Who is connected to the SuperLink right now, polled by the server. */
+  nodes(e) {
+    NODES = e.nodes;
+    adoptRemote(NODES.map(n => n.user));
+    renderPresence();
+    renderWho();
+  },
 
   session(e) {
     if (e.profiles) adoptProfiles(e.profiles);
