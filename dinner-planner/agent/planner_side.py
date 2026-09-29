@@ -28,7 +28,7 @@ from typing import Any
 from flwr.agentapp import AgentSession
 from flwr.app import Context
 
-from agent import llm, policy, venues
+from agent import llm, policy, ui_events, venues
 
 PULL_TIMEOUT = 240.0
 OFFERS_PER_ROUND = 5
@@ -82,6 +82,9 @@ def _exchange(
 ) -> dict[str, tuple[dict[str, Any], float]]:
     """One protocol round: ask every node, then validate what comes back."""
     payload = json.dumps(request)
+    ui_events.emit(
+        "ask", phase=request["phase"], round=request.get("round"), nodes=node_ids
+    )
     pushed = _grid(
         agent,
         "push_messages",
@@ -117,6 +120,7 @@ def _exchange(
         node_id = awaiting.get(message["reply_to_message_id"], message["src_node_id"])
         if message["error"] or not message["payload"]:
             _ledger(agent, node_id, phase, "error", reason=message["error"])
+            ui_events.emit("reply", node=node_id, phase=phase, status="error")
             continue
         try:
             parsed, bits = policy.validate(message["payload"], schema)
@@ -124,8 +128,18 @@ def _exchange(
             # Inbound enforcement: refuse to ingest an out-of-schema payload
             # rather than letting it into the planner's context.
             _ledger(agent, node_id, phase, "dropped", reason=str(err))
+            ui_events.emit("reply", node=node_id, phase=phase, status="dropped")
             continue
         accepted[node_id] = (parsed, bits)
+        ui_events.emit(
+            "reply",
+            node=node_id,
+            phase=phase,
+            status="ok",
+            round=request.get("round"),
+            fields=parsed,
+            bits=bits,
+        )
         _ledger(
             agent,
             node_id,
@@ -138,6 +152,7 @@ def _exchange(
 
     for pending in pulled["pending_message_ids"]:
         _ledger(agent, awaiting[pending], phase, "timeout")
+        ui_events.emit("reply", node=awaiting[pending], phase=phase, status="timeout")
     return accepted
 
 
@@ -267,6 +282,9 @@ def plan(agent: AgentSession) -> dict[str, Any]:
     guests = [node_id for node_id in node_ids if node_id != honoree]
     if not guests:
         raise RuntimeError("No guests in the federation; nothing to plan.")
+    ui_events.emit(
+        "start", prompt=agent.prompt, nodes=nodes, honoree=honoree, guests=guests
+    )
 
     # The only attribute anyone states, and it is her party. Her calendar and
     # budget are not asked for either.
@@ -296,6 +314,7 @@ def plan(agent: AgentSession) -> dict[str, Any]:
         if not offers:
             break
         taken.update(venues.key(offer) for offer in offers)
+        ui_events.emit("round", round=round_no, offers=offers)
 
         replies = _exchange(
             agent,
@@ -324,6 +343,10 @@ def plan(agent: AgentSession) -> dict[str, Any]:
             }
         )
 
+        ui_events.emit(
+            "tally", round=round_no, tallies=tallies, voters=len(replies)
+        )
+
         unanimous = [i for i, t in enumerate(tallies) if t == len(replies)]
         if unanimous:
             venue = offers[unanimous[0]]
@@ -331,6 +354,13 @@ def plan(agent: AgentSession) -> dict[str, Any]:
 
     # Tell the guests, and only the guests.
     if venue:
+        ui_events.emit(
+            "consensus",
+            venue=venue,
+            round=len(rounds),
+            offers_tried=len(taken),
+            search_space=len(pool),
+        )
         _exchange(
             agent,
             guests,
@@ -340,6 +370,13 @@ def plan(agent: AgentSession) -> dict[str, Any]:
         for node_id in guests:
             spend[node_id] += 1.0
 
+    ui_events.emit(
+        "done",
+        venue=venue,
+        spend=spend,
+        guests=guests,
+        excluded=[honoree] if honoree else [],
+    )
     return {
         "venue": venue,
         "wishes": wishes,
