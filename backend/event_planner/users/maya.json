@@ -1,0 +1,22 @@
+{
+  "display_name": "Maya",
+  "emoji": "🌿",
+  "role": "participant",
+  "private": {
+    "calendar": [
+      "11:00-12:00 physiotherapy",
+      "16:30-17:30 lab meeting"
+    ],
+    "budget_usd": 65,
+    "home_area": "california_ave",
+    "home_address": "780 Sherman Avenue, Palo Alto",
+    "curfew_hour": 23,
+    "needs": ["gluten_free"],
+    "like_tags": ["nature", "foodie", "morning"],
+    "avoid_tags": [],
+    "avoid_areas": [],
+    "avoid_atmospheres": [],
+    "dislikes": ["buffets"],
+    "notes": "coeliac disease, strict gluten avoidance, carries epinephrine"
+  }
+}

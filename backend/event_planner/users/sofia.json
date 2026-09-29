@@ -1,0 +1,19 @@
+{
+  "display_name": "Sofia",
+  "emoji": "🎀",
+  "role": "honouree",
+  "private": {
+    "calendar": [],
+    "budget_usd": 90,
+    "home_area": "downtown_palo_alto",
+    "home_address": "1105 Emerson Street, Palo Alto",
+    "curfew_hour": 23,
+    "needs": [],
+    "like_tags": ["foodie", "city", "evening", "relaxing"],
+    "avoid_tags": ["active"],
+    "avoid_areas": [],
+    "avoid_atmospheres": ["formal"],
+    "dislikes": ["singing waiters", "surprise photography"],
+    "notes": "wishlist: a ceramics class, noise cancelling headphones"
+  }
+}

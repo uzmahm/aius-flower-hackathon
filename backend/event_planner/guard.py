@@ -9,7 +9,7 @@ was intended.
 
 `PolicyGrid` wraps the runtime grid and implements the same interface, so the
 app loop is unchanged. Every `push_reply_message` is validated against this
-node's disclosure schema before a Flower message is ever constructed. A payload
+user's disclosure schema before a Flower message is ever constructed. A payload
 that fails validation is not sent -- it is returned to the model as a tool
 error. The model can retry, but it cannot widen what it is allowed to say.
 """
@@ -21,21 +21,21 @@ from typing import Any
 
 from flwr.agentapp import AgentEvents, AgentGrid
 
-from agent import policy
+from event_planner import policy
 
 REPLY_TOOL = "push_reply_message"
 MAX_VIOLATIONS = 3
 
 
 class PolicyGrid(AgentGrid):
-    """Mediate one node's outbound replies through a disclosure schema."""
+    """Mediate one user's outbound replies through a disclosure schema."""
 
     def __init__(
         self,
         inner: AgentGrid,
         events: AgentEvents,
         *,
-        persona: str,
+        user: str,
         phase: str,
         schema: dict[str, policy.Field],
         secrets: set[str],
@@ -43,7 +43,7 @@ class PolicyGrid(AgentGrid):
     ) -> None:
         self._inner = inner
         self._events = events
-        self._persona = persona
+        self._user = user
         self._phase = phase
         self._schema = schema
         self._secrets = secrets
@@ -145,7 +145,7 @@ class PolicyGrid(AgentGrid):
         self._events.emit(
             {
                 "type": "disclosure.ledger",
-                "node": self._persona,
+                "user": self._user,
                 "phase": self._phase,
                 "verdict": verdict,
                 **extra,

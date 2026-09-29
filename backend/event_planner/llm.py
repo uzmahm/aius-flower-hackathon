@@ -97,8 +97,8 @@ def ask_json(
 ) -> Any:
     """One model call that must return JSON. Falls back rather than dying.
 
-    Used for the single genuinely fuzzy step in the protocol (proposing
-    candidate venues). A hackathon demo should degrade, not crash, so a
+    Used for the single genuinely fuzzy step in the protocol (ranking the
+    activity catalogue). A hackathon demo should degrade, not crash, so a
     malformed answer returns `fallback`.
     """
     openai_client = client()
