@@ -7,6 +7,7 @@
 | `run_local.sh` | Everything on one laptop, no networking |
 | `join.sh <user>` | Join as one participant, from this laptop |
 | `new_user.py <slug>` | Create a user profile |
+| `who.py` | List who has joined: every SuperNode with its agent's name |
 | `report.sh` | Rebuild the static run report from a fresh offline run |
 
 ## Start here
@@ -54,7 +55,7 @@ what to fix if it cannot.
 Back on your laptop, in a second terminal:
 
 ```bash
-cd backend && uv run flwr chat
+cd backend && FLWR_CHAT_SUPERLINK=local-agent uv run flwr chat
 /load .
 Plan a relaxing foodie evening in the city for Sam's birthday. Keep it a surprise.
 ```

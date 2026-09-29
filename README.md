@@ -9,14 +9,12 @@ and printed at the end of the run as a number.
 ```
 | user | node | bits disclosed |
 | ---  | ---  | ---            |
-| emma | 11   | 11.00          |
-| ieva | 12   | 11.00          |
-| maya | 13   | 11.00          |
+| emma | 11   | 6.00           |
+| maya | 12   | 6.00           |
 ```
 
 Nobody states a budget, a price band, a set of free hours, an access need or a
-location. Ieva can only spend $50 a head and hates loud rooms; Maya is coeliac;
-Emma has no car and the last shuttle is 21:40. All of it decides the booking.
+location. Maya is coeliac; Emma has no car and the last shuttle is 21:40. All of it decides the booking.
 None of it crosses a wire.
 
 ## Try it in 30 seconds
@@ -98,7 +96,7 @@ They need no API key. The app code is downloaded from your SuperLink; it reads
 **Then be the organiser,** in a second terminal on your laptop:
 
 ```bash
-cd backend && uv run flwr chat
+cd backend && FLWR_CHAT_SUPERLINK=local-agent uv run flwr chat
 /load .
 Plan a relaxing foodie evening in the city for Sam's birthday. Keep it a surprise.
 ```
