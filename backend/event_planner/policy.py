@@ -1,10 +1,11 @@
-"""Disclosure policy: what may leave a node, and what it costs in bits.
+"""Disclosure policy: what may leave a participant's node, and what it costs.
 
 This module is the whole privacy argument of the project. Every value that
 crosses a node boundary must be an instance of a declared field here, so the
-set of things an agent *can* say is finite and enumerable before the model
-runs. Because each field has a finite domain, the information released is not
-just "small" in a hand-wavy sense -- it is measurable, and `bits()` measures it.
+set of things a participant's agent *can* say is finite and enumerable before
+the model runs. Because each field has a finite domain, the information
+released is not just "small" in a hand-wavy sense -- it is measurable, and
+`bits()` measures it.
 """
 
 from __future__ import annotations
@@ -15,30 +16,56 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
-# One-hour slots are the coarsest unit that still lets us pick a dinner time.
-# A subset of a 6-element set is exactly 6 bits, whoever answers.
+# Two-hour blocks spanning a whole day, because an event is not necessarily
+# dinner: a hike starts at 09:00 and a night market ends at 23:00. A subset of
+# a 7-element set is exactly 7 bits, whoever answers.
 SLOTS: tuple[str, ...] = (
-    "17-18",
-    "18-19",
-    "19-20",
-    "20-21",
-    "21-22",
-    "22-23",
+    "09-11",
+    "11-13",
+    "13-15",
+    "15-17",
+    "17-19",
+    "19-21",
+    "21-23",
+)
+
+# Which part of the day each slot belongs to. Used to keep a "morning" activity
+# out of an evening slot; never asked of anyone.
+DAYPARTS: dict[str, str] = {
+    "09-11": "morning",
+    "11-13": "morning",
+    "13-15": "afternoon",
+    "15-17": "afternoon",
+    "17-19": "evening",
+    "19-21": "evening",
+    "21-23": "evening",
+}
+
+# The activity-type vocabulary. This is the "what kind of thing shall we do"
+# axis of the planner: the organiser puts some of these in the brief, the guest
+# of honour may state a few, and every activity in the catalogue is tagged with
+# the ones it satisfies.
+ACTIVITY_TAGS: tuple[str, ...] = (
+    "nature",
+    "city",
+    "morning",
+    "evening",
+    "active",
+    "relaxing",
+    "foodie",
+    "shopping",
 )
 
 PRICE_BANDS: tuple[str, ...] = ("$", "$$", "$$$", "$$$$")
 
 ATMOSPHERES: tuple[str, ...] = ("cosy", "lively", "formal", "casual")
 
-CUISINES: tuple[str, ...] = (
-    "italian",
-    "japanese",
-    "korean",
-    "thai",
-    "mexican",
-    "indian",
-    "american",
-)
+# Identity slugs are infrastructure configuration -- the name the operator gave
+# the SuperNode when they started it -- so they are matched by shape, not drawn
+# from a fixed domain, and they cost zero bits. See `label_field`.
+USER_SLUG = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
+
+ROLES: tuple[str, ...] = ("participant", "honouree")
 
 
 @dataclass(frozen=True)
@@ -92,56 +119,96 @@ def bitmask_field(name: str, length: int, describe: str) -> Field:
     return Field(name, describe, check, lambda v: float(len(v)))
 
 
+def label_field(name: str, describe: str) -> Field:
+    """A configuration identifier. Costs zero bits, and that is a claim.
+
+    The slug a node answers with is the one the operator typed when they
+    started the SuperNode (`--node-config 'user="alex"'`). It is not derived
+    from the person's private profile, so answering it discloses nothing the
+    operator did not already publish by naming the node. The shape check is
+    what keeps it from becoming a free-text side channel: 24 lowercase
+    characters with no spaces and no punctuation cannot carry a calendar entry.
+    """
+
+    def check(value: Any) -> bool:
+        return isinstance(value, str) and bool(USER_SLUG.match(value))
+
+    return Field(name, describe, check, lambda _v: 0.0)
+
+
 # --- Phase schemas -------------------------------------------------------
-# A phase is a question the planner may ask and the exact shape of the only
-# answer a node is permitted to give. Nodes never emit free text.
+# A phase is a question the leader may ask and the exact shape of the only
+# answer a participant is permitted to give. Nodes never emit free text.
 
 
 # There is deliberately no availability or budget schema.
 #
-# An earlier version of this protocol opened by asking every guest for their
-# hour-slot availability and the highest price band they accept. Both are
+# An earlier version of this protocol opened by asking every participant for
+# their hour-slot availability and the highest price band they accept. Both are
 # disclosures of exactly the kind this project exists to avoid:
 #
 #   * A price band IS the budget, coarsened. "I am a $ person" is the socially
-#     costly fact, not the figure behind it. Nobody wants their friends to
-#     learn they are the reason the group ate cheaply.
-#   * An availability subset IS the calendar, coarsened. A guest free in
-#     exactly one slot has disclosed a busy week; one free in all six has
+#     costly fact, not the figure behind it. Nobody wants the group to learn
+#     they are the reason it did the cheap thing.
+#   * An availability subset IS the calendar, coarsened. Someone free in
+#     exactly one slot has disclosed a busy week; someone free in all seven has
 #     disclosed an empty one.
 #
 # Both are decidable by veto instead, so neither is asked. The principle that
-# removed cuisine preferences from the opening round removes these too: if a
-# yes/no answer to a concrete proposal can settle it, do not ask for the
+# keeps activity-type preferences out of the opening round keeps these out too:
+# if a yes/no answer to a concrete proposal can settle it, do not ask for the
 # attribute. What remains is `veto_schema`, and the difference matters --
 #
 #   A disclosed attribute is an assertion. A veto is deniable.
 #
 # "I cannot do 20:00" could be a meeting, a commute, a babysitter or a
-# preference, and the planner cannot tell which. "My availability is
-# [19-20, 20-21]" is a statement about the shape of someone's week.
+# preference, and the leader cannot tell which. "My availability is
+# [19-21, 21-23]" is a statement about the shape of someone's week.
 
 
-def wishes_schema() -> dict[str, Field]:
-    """Phase A': the guest of honour contributes taste, not a calendar."""
+def identity_schema() -> dict[str, Field]:
+    """Phase 0: who is on this node, so the leader can build a roster.
+
+    This is what makes users spawnable. The leader hardcodes nobody; it asks
+    whoever connected. Both fields are configuration, so the round is free.
+    """
     return {
         f.name: f
         for f in (
+            label_field("user", "The slug this SuperNode was started with."),
+            enum_field("role", ROLES, "participant, or honouree for a surprise."),
+        )
+    }
+
+
+def wishes_schema() -> dict[str, Field]:
+    """Phase A: the guest of honour contributes taste, not a calendar.
+
+    Only the honouree is asked this, and only because it is their event. Every
+    other participant answers in vetoes alone.
+    """
+    return {
+        f.name: f
+        for f in (
+            subset_field(
+                "activity_prefs",
+                ACTIVITY_TAGS,
+                "The kinds of thing they would enjoy, as a subset of the tags.",
+            ),
             enum_field("atmosphere", ATMOSPHERES, "Preferred atmosphere."),
-            enum_field("cuisine_pref", CUISINES, "Preferred cuisine."),
             bool_field("prefers_new_place", "True if somewhere new is preferred."),
         )
     }
 
 
 def veto_schema(num_candidates: int) -> dict[str, Field]:
-    """The only channel a guest has. One bit per concrete offer, no reasons.
+    """The only channel a participant has. One bit per offer, no reasons.
 
-    Each candidate is a fully specified offer -- venue, cuisine, price band,
+    Each candidate is a fully specified offer -- activity, tags, price band,
     area, atmosphere and a time -- so a single bit answers every private
     constraint at once: the calendar, the budget ceiling, the allergy, the
-    transport cut-off, the dislike of loud rooms. The planner learns which
-    offers are live. It never learns which constraint killed the others.
+    transport cut-off, the bad knee, the dislike of crowds. The leader learns
+    which offers are live. It never learns which constraint killed the others.
     """
     return {
         "verdicts": bitmask_field(
@@ -156,6 +223,7 @@ def plan_schema() -> dict[str, Field]:
 
 
 SCHEMAS: dict[str, Callable[..., dict[str, Field]]] = {
+    "identity": identity_schema,
     "wishes": wishes_schema,
     "veto": veto_schema,
     "plan": plan_schema,
@@ -213,7 +281,7 @@ def validate(payload: str, schema: dict[str, Field]) -> tuple[dict[str, Any], fl
 _WORD = re.compile(r"[a-z0-9]+")
 
 
-def canaries(private: dict[str, Any]) -> set[str]:
+def canaries(private: dict[str, Any], *, allow: set[str] | None = None) -> set[str]:
     """Derive a set of raw private tokens that must never appear in a payload."""
     out: set[str] = set()
 
@@ -234,8 +302,10 @@ def canaries(private: dict[str, Any]) -> set[str]:
             out.add(str(value))
 
     walk(private)
-    # Never treat a legal disclosure value as a secret.
-    allowed = {v.lower() for v in SLOTS + PRICE_BANDS + ATMOSPHERES + CUISINES}
+    # Never treat a legal disclosure value as a secret. `allow` carries the
+    # node's own slug, which is configuration rather than private data.
+    allowed = {v.lower() for v in SLOTS + PRICE_BANDS + ATMOSPHERES + ACTIVITY_TAGS}
+    allowed |= {v.lower() for v in ROLES} | {v.lower() for v in (allow or set())}
     return {c for c in out if c not in allowed}
 
 

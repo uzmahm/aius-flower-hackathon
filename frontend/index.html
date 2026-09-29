@@ -335,7 +335,7 @@
     <span class="cat">🐱</span>
     <h1>Event Planner</h1>
     <div class="status" id="status"><span class="dot"></span><span id="status-text">Connecting…</span></div>
-    <button class="btn" id="replay" title="Replay the offline dry run">▶ Replay demo</button>
+    <button class="btn" id="replay" title="Replay a simulated run, offline" onclick="fetch('/demo')">▶ Replay demo</button>
   </div>
 
   <div class="main" id="main">
@@ -344,14 +344,14 @@
       <div class="col left" id="col-left"></div>
       <div class="col center">
         <div class="board">
-          <h2 id="board-title">Birthday Dinner</h2>
+          <h2 id="board-title">Event Planner</h2>
           <div class="round" id="board-round">Waiting for a prompt</div>
           <ol class="offers" id="offers"><li class="empty">Send a prompt in <code>flwr chat</code> to start planning.</li></ol>
         </div>
         <div class="hub" id="hub">
           <span class="flower">🌸</span>
           <b>Flower</b>
-          <small id="hub-text">Planner on the SuperLink</small>
+          <small id="hub-text">Leader on the SuperLink</small>
         </div>
         <div class="banner" id="banner" hidden></div>
         <div class="feed">
@@ -378,7 +378,7 @@
       <div class="card">
         <h3 style="font-size:16px">🔒 What left each laptop</h3>
         <table class="ledger" id="plan-ledger" style="margin-top:8px"></table>
-        <p class="note">Only yes/no answers to concrete offers. No budget, diet, calendar or address was ever sent.</p>
+        <p class="note">Yes/no answers to concrete offers, plus activity types from the guest of honour. No budget, needs, calendar or address was ever sent.</p>
       </div>
       <button class="confirm" id="confirm">✨ Confirm Plan ✨</button>
     </aside>
@@ -386,28 +386,46 @@
 </div>
 
 <script>
-const PEOPLE = {
-  ieva:     { name: "Ieva",  emoji: "🎧", tint: "#fde7f0", accent: "#f5a9c6" },
-  maya:     { name: "Maya",  emoji: "🌿", tint: "#e3effc", accent: "#9fc3ec" },
-  emma:     { name: "Emma",  emoji: "🍣", tint: "#ece6fb", accent: "#b9a6ec" },
-  birthday: { name: "Sofia", emoji: "🎀", tint: "#fff0e0", accent: "#f3bf8a", tag: "Birthday girl" },
+/* The console knows nothing about who is taking part until the server tells
+   it. Every panel below is built from the user profiles on the organiser's
+   machine plus the events the leader printed, so spawning a new user with
+   scripts/new_user.py needs no change here. */
+
+const PALETTE = [
+  { tint: "#fde7f0", accent: "#f5a9c6" },
+  { tint: "#e3effc", accent: "#9fc3ec" },
+  { tint: "#ece6fb", accent: "#b9a6ec" },
+  { tint: "#fff0e0", accent: "#f3bf8a" },
+  { tint: "#e4f6ec", accent: "#93cfae" },
+  { tint: "#fdf3d7", accent: "#e8cc7a" },
+  { tint: "#fde3e3", accent: "#eda2a2" },
+  { tint: "#e6f2f6", accent: "#93c4d4" },
+];
+
+const KIND = {
+  hike: "🥾", walk: "🌅", market: "🧺", museum: "🖼️", class: "🎨",
+  shopping: "🛍️", sport: "🧗", dinner: "🍽️", music: "🎷",
 };
-const LAYOUT = { left: ["ieva", "emma"], right: ["maya", "birthday"] };
-const CUISINE = { japanese: "🍣", italian: "🍝", korean: "🍲", thai: "🍜", american: "🍔", mexican: "🌮", indian: "🍛" };
+const TAG = {
+  nature: "🌿", city: "🏙️", morning: "🌅", evening: "🌙",
+  active: "⚡", relaxing: "🛋️", foodie: "🍜", shopping: "🛍️",
+};
+
+/* Which private keys to show, and how to phrase them. Everything here is
+   read from this machine's own profile files and never crossed a wire. */
 const PRIVATE_ROWS = [
   ["calendar", "📅", v => `Calendar · ${v.length} event${v.length === 1 ? "" : "s"}`],
-  ["budget_usd", "💳", v => `Budget: $${v}`],
-  ["medical", "🩺", v => `Medical: ${v}`],
-  ["dietary", "🥗", v => `Dietary: ${v}`],
-  ["home_address", "📍", v => `Home: ${v}`],
-  ["exact_location", "📍", v => `Lives: ${v}`],
-  ["transport", "🚌", v => `Transport: ${v}`],
-  ["commitments", "🗓️", v => v],
-  ["dislikes", "✖️", v => `Dislikes: ${v.join(", ")}`],
-  ["tastes", "🍴", v => `Likes: ${v.join(", ")}`],
-  ["wishlist", "💝", v => `Wishlist: ${v.join(", ")}`],
-  ["favourite_foods", "⭐", v => `Favourites: ${v.join(", ")}`],
-  ["visited_recently", "📌", v => `Visited: ${v.join(", ")}`],
+  ["budget_usd", "💳", v => `Budget: $${v} a head`],
+  ["curfew_hour", "🚌", v => `Must be home by ${v}:00`],
+  ["needs", "🩺", v => `Needs: ${v.map(t => titleCase(t)).join(", ")}`],
+  ["avoid_tags", "✖️", v => `Will not do: ${v.join(", ")}`],
+  ["like_tags", "💗", v => `Likes: ${v.join(", ")}`],
+  ["avoid_areas", "🗺️", v => `Cannot get to: ${v.map(titleCase).join(", ")}`],
+  ["avoid_atmospheres", "🔇", v => `Dislikes: ${v.join(", ")} rooms`],
+  ["home_area", "📍", v => `Lives: ${titleCase(v)}`],
+  ["home_address", "🏠", v => `Home: ${v}`],
+  ["dislikes", "😖", v => `Dislikes: ${v.join(", ")}`],
+  ["notes", "🔐", v => v],
 ];
 
 const $ = id => document.getElementById(id);
@@ -415,23 +433,48 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
 const titleCase = s => String(s).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 const hour = h => { const n = +h % 24; return `${n % 12 || 12}:00 ${n < 12 ? "AM" : "PM"}`; };
 const slotText = slot => { const [a, b] = slot.split("-"); return `${hour(a)} – ${hour(b)}`; };
+const nonEmpty = v => v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && !v.length);
 
-let profiles = {};
+let profiles = {};   // user slug -> { display_name, emoji, role, private }
+let PEOPLE = {};     // user slug -> { name, emoji, tint, accent, role }
+let ORDER = [];      // user slugs, in the order the columns show them
 let S = fresh();
 function fresh() {
   return { nodes: {}, honoree: null, guests: [], offers: [], round: 0, bits: {}, verdicts: {}, feed: [] };
 }
 
+function adoptProfiles(next) {
+  profiles = next || {};
+  ORDER = Object.keys(profiles).sort();
+  PEOPLE = {};
+  ORDER.forEach((u, i) => {
+    PEOPLE[u] = {
+      name: profiles[u].display_name || titleCase(u),
+      emoji: profiles[u].emoji || "🙂",
+      role: profiles[u].role || "participant",
+      ...PALETTE[i % PALETTE.length],
+    };
+  });
+  buildStations();
+}
+
 /* ---- rendering ---------------------------------------------------------- */
 
+function columns() {
+  // Split whoever is here down the middle, keeping the two sides even.
+  const half = Math.ceil(ORDER.length / 2);
+  return { left: ORDER.slice(0, half), right: ORDER.slice(half) };
+}
+
 function buildStations() {
+  const cols = columns();
   for (const side of ["left", "right"]) {
-    $(`col-${side}`).innerHTML = LAYOUT[side].map(p => {
+    $(`col-${side}`).innerHTML = cols[side].map(p => {
       const who = PEOPLE[p];
       return `<section class="agent" id="agent-${p}" style="--tint:${who.tint};--accent:${who.accent}">
         <header class="tag"><span class="av" id="av-${p}">${who.emoji}</span>
-          <span><b>${who.name} Agent</b><small id="role-${p}">${who.tag || "Guest"}</small></span></header>
-        <div class="bubble" id="bubble-${p}">Waiting for the planner…</div>
+          <span><b>${esc(who.name)}</b><small id="role-${p}">${who.role === "honouree" ? "Guest of honour" : "Participant"}</small></span></header>
+        <div class="bubble" id="bubble-${p}">Waiting for the leader…</div>
         <div class="private" id="private-${p}"></div>
       </section>`;
     }).join("");
@@ -441,14 +484,14 @@ function buildStations() {
 }
 
 function renderPrivate() {
-  for (const p of Object.keys(PEOPLE)) {
+  for (const p of ORDER) {
     const el = $(`private-${p}`);
     const data = profiles[p]?.private;
     if (!el) continue;
-    if (!data) { el.innerHTML = `<h4>🔒 Private</h4><div class="more">Profile stays on ${PEOPLE[p].name}'s laptop</div>`; continue; }
-    const rows = PRIVATE_ROWS.filter(([k]) => data[k] !== undefined);
+    if (!data) { el.innerHTML = `<h4>🔒 Private</h4><div class="more">Profile stays on ${esc(PEOPLE[p].name)}'s laptop</div>`; continue; }
+    const rows = PRIVATE_ROWS.filter(([k]) => nonEmpty(data[k]));
     const shown = rows.slice(0, 5);
-    el.innerHTML = `<h4>🔒 Private · stays on ${PEOPLE[p].name}'s laptop</h4><ul>` +
+    el.innerHTML = `<h4>🔒 Private · stays on ${esc(PEOPLE[p].name)}'s laptop</h4><ul>` +
       shown.map(([k, icon, fmt]) => `<li><span>${icon}</span><span title="${esc(fmt(data[k]))}">${esc(fmt(data[k]))}</span></li>`).join("") +
       (rows.length > shown.length ? `<li class="more">…and ${rows.length - shown.length} more</li>` : "") + "</ul>";
   }
@@ -477,6 +520,10 @@ function setStatus(text, live) {
   $("status").classList.toggle("live", !!live);
 }
 
+function offerTags(o) {
+  return (o.tags || []).map(t => `${TAG[t] || ""}${t}`).join(" · ");
+}
+
 function renderBoard(tallies, voters, winner) {
   if (!S.offers.length) return;
   $("board-round").textContent = `Round ${S.round} · ${S.offers.length} offers`;
@@ -485,7 +532,7 @@ function renderBoard(tallies, voters, winner) {
     const dots = tallies ? Array.from({ length: voters }, (_, k) => `<i class="${k < t ? "y" : ""}"></i>`).join("") : "";
     const cls = winner === undefined ? "" : (i === winner ? "win" : "dim");
     return `<li class="offer ${cls}"><span class="n">${i + 1}</span>
-      <span><b>${esc(o.name)}</b> ${CUISINE[o.cuisine] || "🍽️"}<br><span class="meta">${slotText(o.slot)} · ${esc(o.price_band)} · ${esc(titleCase(o.atmosphere))}</span></span>
+      <span><b>${esc(o.name)}</b> ${KIND[o.kind] || "✨"}<br><span class="meta">${slotText(o.slot)} · ${esc(o.price_band)} · ${esc(offerTags(o))}</span></span>
       <span class="dots">${dots}</span></li>`;
   }).join("");
 }
@@ -499,7 +546,7 @@ function drawWires() {
   const hubR = $("hub").getBoundingClientRect();
   const hx = hubR.left + hubR.width / 2 - box.left + stage.scrollLeft;
   const hy = hubR.top + hubR.height / 2 - box.top + stage.scrollTop;
-  svg.innerHTML = Object.keys(PEOPLE).map(p => {
+  svg.innerHTML = ORDER.map(p => {
     const av = $(`av-${p}`);
     if (!av) return "";
     const r = av.getBoundingClientRect();
@@ -522,17 +569,18 @@ function pulse(p, dir) {
 
 /* ---- plan panel ----------------------------------------------------------- */
 
-function showPlan(v, info) {
-  $("plan-hero").textContent = CUISINE[v.cuisine] || "🍽️";
-  $("plan-venue").textContent = v.name;
-  const tags = [titleCase(v.cuisine), v.price_band, `${titleCase(v.atmosphere)} atmosphere`,
-    ...(v.dietary || []).map(titleCase), titleCase(v.area)];
+function showPlan(a, info) {
+  $("plan-hero").textContent = KIND[a.kind] || "✨";
+  $("plan-venue").textContent = a.name;
+  const tags = [titleCase(a.kind), ...(a.tags || []), a.price_band,
+    `${titleCase(a.atmosphere)} atmosphere`, titleCase(a.area)];
   $("plan-tags").innerHTML = tags.map(t => `<span>${esc(t)}</span>`).join("");
   $("plan-facts").innerHTML = [
-    `🗓️ ${slotText(v.slot)}`,
+    `🗓️ ${slotText(a.slot)}`,
     `🔎 Found in round ${info.round}, after ${info.offers_tried} of ${info.search_space} possible offers`,
-    `✅ Works for every guest`,
-    v.new_opening ? "🆕 A place she hasn't been" : null,
+    `✅ Everyone said yes`,
+    a.new_opening ? "🆕 Somewhere new" : null,
+    a.outdoor ? "🌤️ Outdoors" : null,
   ].filter(Boolean).map(t => `<li>${esc(t)}</li>`).join("");
   renderPeople();
   $("main").classList.add("with-plan");
@@ -542,21 +590,20 @@ function showPlan(v, info) {
 }
 
 function renderPeople() {
-  const rows = Object.keys(PEOPLE).map(p => {
+  $("plan-people").innerHTML = ORDER.map(p => {
     const id = nodeOf(p);
     const isHon = id && id === S.honoree;
-    const guest = id && S.guests.includes(id);
-    const status = isHon ? '<span class="shh">🎁 kept a surprise</span>'
-      : guest ? '<span class="ok">✓ works for me!</span>' : '<span class="more">—</span>';
-    return `<li><span class="av" style="--tint:${PEOPLE[p].tint};--accent:${PEOPLE[p].accent}">${PEOPLE[p].emoji}</span><span>${PEOPLE[p].name}</span>${status}</li>`;
-  });
-  $("plan-people").innerHTML = rows.join("");
+    const voted = id && S.guests.includes(id);
+    const status = isHon && !voted ? '<span class="shh">🎁 kept a surprise</span>'
+      : voted ? '<span class="ok">✓ works for me!</span>' : '<span class="more">—</span>';
+    return `<li><span class="av" style="--tint:${PEOPLE[p].tint};--accent:${PEOPLE[p].accent}">${PEOPLE[p].emoji}</span><span>${esc(PEOPLE[p].name)}</span>${status}</li>`;
+  }).join("");
 }
 
 function renderLedger(spend) {
   const rows = Object.entries(spend).map(([id, bits]) => {
     const p = S.nodes[id];
-    return `<tr><td>${p ? PEOPLE[p].emoji + " " + PEOPLE[p].name : "Node " + id.slice(-4)}</td><td>${bits.toFixed(0)} bits</td></tr>`;
+    return `<tr><td>${p && PEOPLE[p] ? PEOPLE[p].emoji + " " + esc(PEOPLE[p].name) : "Node " + String(id).slice(-4)}</td><td>${bits.toFixed(0)} bits</td></tr>`;
   });
   const total = Object.values(spend).reduce((a, b) => a + b, 0);
   $("plan-ledger").innerHTML = rows.join("") + `<tr class="total"><td>Total</td><td>${total.toFixed(0)} bits</td></tr>`;
@@ -570,9 +617,10 @@ $("confirm").onclick = () => {
 
 /* ---- event handling -------------------------------------------------------- */
 
-const nodeOf = p => Object.keys(S.nodes).find(id => S.nodes[id] === p);
-const personaOf = id => S.nodes[id];
-const nameOf = id => PEOPLE[personaOf(id)]?.name || `Node …${String(id).slice(-4)}`;
+const nodeOf = u => Object.keys(S.nodes).find(id => S.nodes[id] === u);
+const userOf = id => S.nodes[id];
+const nameOf = id => PEOPLE[userOf(id)]?.name || `Node …${String(id).slice(-4)}`;
+const honoureeName = () => (S.honoree && PEOPLE[userOf(S.honoree)]?.name) || "the guest of honour";
 
 function reset() {
   S = fresh();
@@ -584,77 +632,96 @@ function reset() {
   $("offers").innerHTML = '<li class="empty">Starting…</li>';
   $("board-round").textContent = "Getting everyone together";
   $("feed").innerHTML = "";
-  for (const p of Object.keys(PEOPLE)) say(p, "Waiting for the planner…");
-  hub("Planner on the SuperLink", false);
+  for (const p of ORDER) say(p, "Waiting for the leader…");
+  hub("Leader on the SuperLink", false);
   requestAnimationFrame(drawWires);
 }
 
 const handlers = {
-  hello(e) { profiles = e.profiles || {}; renderPrivate(); },
+  hello(e) { adoptProfiles(e.profiles); },
 
   session(e) {
+    if (e.profiles) adoptProfiles(e.profiles);
     reset();
-    if (e.profiles) { profiles = e.profiles; renderPrivate(); }
-    setStatus(e.run_id === "demo" ? "Demo replay (dryrun.py)" : `Live · run ${e.run_id}`, true);
+    setStatus(e.run_id === "demo" ? "Offline replay (simulated users)" : `Live · run ${e.run_id}`, true);
   },
 
   start(e) {
-    for (const n of e.nodes) if (n.persona) S.nodes[n.id] = n.persona;
-    S.honoree = e.honoree;
-    S.guests = e.guests;
-    const hon = e.honoree && personaOf(e.honoree);
-    const honName = hon ? PEOPLE[hon].name : "our friend";
-    $("board-title").textContent = `${honName}'s Birthday Dinner`;
-    for (const p of Object.keys(PEOPLE)) {
-      const id = nodeOf(p);
-      if (!id) { say(p, "Not connected", "No SuperNode for this person"); continue; }
-      const isHon = id === e.honoree;
-      $(`agent-${p}`).classList.toggle("honoree", isHon);
-      $(`role-${p}`).textContent = isHon ? "Birthday girl · SuperNode" : "Guest · SuperNode";
-      say(p, `Hi! I'm ${PEOPLE[p].name}'s agent 👋`, "Everything I know stays on this laptop");
-    }
     hub(`“${e.prompt.slice(0, 70)}${e.prompt.length > 70 ? "…" : ""}”`);
-    feed(`Planner found ${e.nodes.length} agents in the federation`);
+    feed(`Leader found ${e.nodes.length} agent${e.nodes.length === 1 ? "" : "s"} in the federation`);
+  },
+
+  /* Who is actually here is discovered at runtime, not configured here. */
+  roster(e) {
+    for (const n of e.nodes) if (n.user) S.nodes[n.id] = n.user;
+    S.honoree = e.honouree;
+    S.guests = e.guests;
+    const brief = e.brief || {};
+    const what = (brief.tags || []).length ? brief.tags.join(", ") : "an event";
+    $("board-title").textContent = S.honoree
+      ? `${honoureeName()}'s event · ${what}`
+      : `Planning · ${what}`;
+    for (const p of ORDER) {
+      const id = nodeOf(p);
+      if (!id) { say(p, "Not connected", "No SuperNode running for this user"); continue; }
+      const hidden = (e.excluded || []).includes(id);
+      $(`agent-${p}`).classList.toggle("honoree", id === e.honouree);
+      $(`role-${p}`).textContent = id === e.honouree ? "Guest of honour · SuperNode" : "Participant · SuperNode";
+      say(p, `Hi! I'm ${esc(PEOPLE[p].name)}'s agent 👋`,
+        hidden ? "I keep the surprise, and everything else, on this laptop"
+               : "Everything I know stays on this laptop");
+    }
+    feed(brief.surprise
+      ? `Planning ${what} for ${honoureeName()} — and keeping it from them`
+      : `Planning ${what} for ${e.guests.length} people`);
   },
 
   ask(e) {
     for (const id of e.nodes) {
-      const p = personaOf(id);
+      const p = userOf(id);
       if (p) pulse(p, "out");
     }
-    if (e.phase === "wishes") {
-      const p = personaOf(e.nodes[0]);
+    if (e.phase === "identity") {
+      hub("Asking who is here");
+      feed("Asked every node who it speaks for (costs 0 bits: it is configuration)");
+    } else if (e.phase === "wishes") {
+      const p = userOf(e.nodes[0]);
       if (p) say(p, `Thinking about what I'd love${typing}`);
-      hub("Asking the birthday girl for her wishes");
-      feed(`Asked ${nameOf(e.nodes[0])} for her wishes (only her taste, nothing else)`);
+      hub(`Asking ${honoureeName()} what kind of thing they'd enjoy`);
+      feed(`Asked ${nameOf(e.nodes[0])} for activity preferences only — no calendar, no budget`);
     } else if (e.phase === "veto") {
       for (const id of e.nodes) {
-        const p = personaOf(id);
-        if (p) say(p, `Checking ${S.offers.length} offers against my private calendar, budget &amp; diet${typing}`);
+        const p = userOf(id);
+        if (p) say(p, `Checking ${S.offers.length} offers against my private calendar, budget &amp; needs${typing}`);
       }
-      const hon = S.honoree && personaOf(S.honoree);
-      if (hon) say(hon, "🙈 Not peeking, it's a surprise!", "I never see the shortlist");
-      hub(`Asking ${e.nodes.length} guests about ${S.offers.length} offers`);
+      const hon = S.honoree && userOf(S.honoree);
+      if (hon && !e.nodes.includes(S.honoree)) say(hon, "🙈 Not peeking, it's a surprise!", "I never see the shortlist");
+      hub(`Asking ${e.nodes.length} ${e.nodes.length === 1 ? "person" : "people"} about ${S.offers.length} offers`);
     } else if (e.phase === "plan") {
-      for (const id of e.nodes) { const p = personaOf(id); if (p) say(p, `Got the booking${typing}`); }
-      hub("Telling the guests (not Sofia!)");
+      for (const id of e.nodes) { const p = userOf(id); if (p) say(p, `Got the booking${typing}`); }
+      const hon = S.honoree && userOf(S.honoree);
+      hub(hon && !e.nodes.includes(S.honoree) ? `Telling everyone except ${honoureeName()}` : "Telling everyone");
     }
   },
 
   reply(e) {
-    const p = personaOf(e.node);
+    const p = userOf(e.node);
     if (p) pulse(p, "in");
     if (e.status !== "ok") {
-      if (p) say(p, `⚠️ Couldn't answer (${e.status})`, "The planner gets no reply, so no information");
+      if (p) say(p, `⚠️ Couldn't answer (${e.status})`, "The leader gets no reply, so no information");
       feed(`${nameOf(e.node)}: no valid answer (${e.status})`);
       return;
     }
     S.bits[e.node] = (S.bits[e.node] || 0) + (e.bits || 0);
-    if (e.phase === "wishes") {
+    if (e.phase === "identity") {
+      if (p) say(p, `I'm ${esc(PEOPLE[p]?.name || e.fields.user)} 🙋`, "0 bits: my name is configuration, not private data");
+    } else if (e.phase === "wishes") {
       const f = e.fields;
-      const bits = [f.atmosphere && `something ${f.atmosphere}`, f.cuisine_pref && `${f.cuisine_pref} food`, f.prefers_new_place && "somewhere new"].filter(Boolean);
-      if (p) say(p, `I'd love ${esc(bits.join(", "))} please 💝`, `Shared ${e.bits} bits: just my taste`);
-      feed(`${nameOf(e.node)} shared her wishes`);
+      const wants = (f.activity_prefs || []).map(t => `${TAG[t] || ""} ${t}`).join(", ");
+      const parts = [wants && `something ${wants}`, f.atmosphere && `${f.atmosphere}`,
+        f.prefers_new_place && "somewhere new"].filter(Boolean);
+      if (p) say(p, `I'd love ${esc(parts.join(", "))} please 💝`, `Shared ${e.bits} bits: activity types only`);
+      feed(`${nameOf(e.node)} shared what kinds of thing they enjoy`);
     } else if (e.phase === "veto") {
       const v = e.fields.verdicts;
       S.verdicts[e.node] = v;
@@ -671,7 +738,7 @@ const handlers = {
     S.round = e.round;
     S.offers = e.offers;
     renderBoard();
-    feed(`Round ${e.round}: planner proposed ${e.offers.length} concrete offers`);
+    feed(`Round ${e.round}: leader proposed ${e.offers.length} concrete offers`);
     hub(`Round ${e.round}: sending offers`);
   },
 
@@ -681,21 +748,21 @@ const handlers = {
     renderBoard(e.tallies, e.voters, winner);
     feed(winner === undefined
       ? `Round ${e.round}: no offer works for everyone yet, trying again`
-      : `Round ${e.round}: offer ${winner + 1} works for all ${e.voters} guests!`);
+      : `Round ${e.round}: offer ${winner + 1} works for all ${e.voters}!`);
   },
 
   consensus(e) {
     hub("Everyone said yes! 🎉", false);
-    feed(`Consensus: ${e.venue.name}, ${slotText(e.venue.slot)}`);
-    showPlan(e.venue, e);
+    feed(`Agreed: ${e.activity.name}, ${slotText(e.activity.slot)}`);
+    showPlan(e.activity, e);
   },
 
   done(e) {
     renderLedger(e.spend);
-    if (!e.venue) {
+    if (!e.activity) {
       hub("No consensus this time", false);
       $("banner").hidden = false;
-      $("banner").textContent = "No offer worked for everyone within the round limit, so there's no plan to show.";
+      $("banner").textContent = "No offer worked for everyone within the round limit, so there's no plan to show. Every rejection is still just one bit — the leader never learns why.";
       feed("Finished without a plan everyone accepts");
     } else {
       renderPeople();
@@ -715,8 +782,6 @@ function connect() {
   es.onerror = () => setStatus("Console server not reachable, retrying…", false);
 }
 
-$("replay").onclick = () => fetch("/demo");
-buildStations();
 connect();
 </script>
 </body>

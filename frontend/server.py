@@ -1,15 +1,16 @@
-"""Live console for the dinner planner.
+"""Live console for the event planner. This is the whole front end.
 
-Watches a SuperLink for new dinner-planner runs. When one starts (you sent a
-prompt in `flwr chat`), it opens a window and streams the planner's
-`UI_EVENT` lines from `flwr log --stream` into it over Server-Sent Events.
+Watches a SuperLink for new event-planner runs. When one starts (you sent a
+prompt in `flwr chat`), it opens a window and streams the leader's `UI_EVENT`
+lines from `flwr log --stream` into it over Server-Sent Events.
 
-    uv run --project dinner-planner python ui/server.py              # local SuperLink
-    uv run --project dinner-planner python ui/server.py --superlink supergrid
-    uv run --project dinner-planner python ui/server.py --demo       # replay dryrun.py
+    uv run --project backend python frontend/server.py                    # local
+    uv run --project backend python frontend/server.py --superlink supergrid
+    uv run --project backend python frontend/server.py --demo             # offline
 
-Run it from the repo root. Needs the dinner-planner environment for the `flwr`
-CLI and for the persona profiles shown in the (narrator-only) private panels.
+It reads nothing but the run log and the user profiles on this machine. The
+private panels it draws are a narrator's view, never anything that crossed
+the network -- see frontend/README.md.
 """
 
 from __future__ import annotations
@@ -29,13 +30,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 UI_DIR = Path(__file__).resolve().parent
-PLANNER_DIR = UI_DIR.parent / "dinner-planner"
+ROOT = UI_DIR.parent
+BACKEND_DIR = ROOT / "backend"
+LOG_DIR = ROOT / "logs"
 PREFIX = "UI_EVENT "
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-APP_MARKER = "dinner-planner"
+APP_MARKER = "event-planner"
 
-sys.path.insert(0, str(PLANNER_DIR))
-from agent import personas  # noqa: E402
+sys.path.insert(0, str(BACKEND_DIR))
+from event_planner import profiles as user_profiles  # noqa: E402
 
 
 class Hub:
@@ -80,34 +83,52 @@ HUB = Hub()
 
 
 def profiles() -> dict:
-    """Narrator view of each persona. Shown in the window, never sent anywhere."""
+    """Narrator view of every user on this machine. Never sent anywhere.
+
+    Read straight off disk, so a user you spawn with scripts/new_user.py
+    shows up in the console with no change here.
+    """
     return {
-        name: {"role": entry["role"], "private": entry["private"]}
-        for name, entry in personas.PROFILES.items()
+        user: {
+            "display_name": entry.get("display_name", user.title()),
+            "emoji": entry.get("emoji", "🙂"),
+            "role": entry.get("role", "participant"),
+            "private": entry.get("private", {}),
+        }
+        for user, entry in user_profiles.load_all().items()
     }
 
 
-def local_persona_map() -> dict[str, str]:
-    """node_id -> persona, read from run_local.sh's SuperNode logs.
+def local_user_map() -> dict[str, str]:
+    """node_id -> user slug, read from the SuperNode logs in logs/.
 
-    Local SuperNodes have no names, so the console learns who is who from the
-    logs on this machine. On SuperGrid the registered node names are used.
+    Local SuperNodes have no registered names, so the console learns who is
+    who from the logs on this machine. On SuperGrid the node names are used.
     """
     mapping: dict[str, str] = {}
-    for log in (PLANNER_DIR / "logs").glob("supernode-*.log"):
-        persona = log.stem.removeprefix("supernode-")
+    for log in LOG_DIR.glob("supernode-*.log"):
+        user = log.stem.removeprefix("supernode-")
         for match in re.finditer(r"SuperNode ID: (\d+)", ANSI.sub("", log.read_text())):
-            mapping[match.group(1)] = persona
+            mapping[match.group(1)] = user
     return mapping
 
 
 def enrich(event: dict) -> dict:
-    """Attach a persona to every node in the start event."""
-    if event.get("kind") == "start":
-        mapping = local_persona_map()
+    """Attach a user slug to every node in the roster event.
+
+    The leader already reports one from the identity round; this fills in the
+    gap for any node that did not answer it.
+    """
+    if event.get("kind") == "roster":
+        known = set(user_profiles.available())
+        mapping = local_user_map()
         for node in event.get("nodes", []):
             name = (node.get("name") or "").lower()
-            node["persona"] = name if name in personas.PROFILES else mapping.get(node["id"])
+            node["user"] = (
+                node.get("user")
+                or (name if name in known else None)
+                or mapping.get(node["id"])
+            )
     return event
 
 
@@ -146,7 +167,10 @@ def show(url: str) -> None:
 def flwr(*args: str) -> list[str]:
     exe = shutil.which("flwr")
     if exe is None:
-        sys.exit("flwr not found. Run via: uv run --project dinner-planner python ui/server.py")
+        sys.exit(
+            "flwr not found. Run via: "
+            "uv run --project backend python frontend/server.py"
+        )
     return [exe, *args]
 
 
@@ -179,7 +203,7 @@ def follow(run_id: str, superlink: str) -> None:
 
 
 def watch(superlink: str, url: str) -> None:
-    """Poll for new dinner-planner runs and follow each one."""
+    """Poll for new event-planner runs and follow each one."""
     known = {run["run-id"] for run in list_runs(superlink)}
     print(f"Watching {superlink} for new {APP_MARKER} runs "
           f"({len(known)} existing ignored). Send a prompt in flwr chat.")
@@ -199,10 +223,11 @@ def watch(superlink: str, url: str) -> None:
 
 
 def demo(url: str, speed: float = 1.0) -> None:
-    """Replay dryrun.py's events with pauses, so the console can be rehearsed."""
+    """Replay a simulated run with pauses, so the console can be rehearsed."""
     out = subprocess.run(
-        [sys.executable, "dryrun.py"], cwd=PLANNER_DIR, capture_output=True,
-        text=True, env={**os.environ, "PYTHONPATH": str(PLANNER_DIR)},
+        [sys.executable, "-m", "event_planner.simulate"],
+        cwd=BACKEND_DIR, capture_output=True, text=True,
+        env={**os.environ, "PYTHONPATH": str(BACKEND_DIR)},
     ).stdout
     events = [e for e in map(parse, out.splitlines()) if e]
     HUB.reset(run_id="demo", source="dryrun", profiles=profiles())
@@ -212,8 +237,8 @@ def demo(url: str, speed: float = 1.0) -> None:
             break
         time.sleep(0.1)
     time.sleep(1.5 / speed)
-    pauses = {"start": 2.0, "ask": 1.4, "reply": 1.1, "round": 1.8, "tally": 2.2,
-              "consensus": 1.5, "done": 0}
+    pauses = {"start": 1.6, "roster": 2.0, "ask": 1.4, "reply": 1.1, "round": 1.8,
+              "tally": 2.2, "consensus": 1.5, "done": 0}
     for event in events:
         HUB.publish(enrich(event))
         time.sleep(pauses.get(event["kind"], 1.0) / speed)
@@ -272,7 +297,7 @@ def main() -> None:
                         help="SuperLink connection from ~/.flwr/config.toml")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--demo", action="store_true",
-                        help="replay dryrun.py instead of watching a SuperLink")
+                        help="replay a simulated run instead of watching a SuperLink")
     parser.add_argument("--speed", type=float, default=1.0,
                         help="demo replay speed multiplier (2 = twice as fast)")
     args = parser.parse_args()

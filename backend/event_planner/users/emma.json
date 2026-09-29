@@ -1,0 +1,21 @@
+{
+  "display_name": "Emma",
+  "emoji": "🚲",
+  "role": "participant",
+  "private": {
+    "calendar": [
+      "14:00-15:00 advisor one-on-one"
+    ],
+    "budget_usd": 55,
+    "home_area": "stanford",
+    "home_address": "Escondido Village, Building 4B, Stanford",
+    "curfew_hour": 21,
+    "needs": ["step_free"],
+    "like_tags": ["city", "shopping", "relaxing"],
+    "avoid_tags": ["active"],
+    "avoid_areas": ["el_camino", "skyline"],
+    "avoid_atmospheres": [],
+    "dislikes": ["long walks after dark"],
+    "notes": "no car, relies on the Marguerite shuttle which stops at 21:40"
+  }
+}
