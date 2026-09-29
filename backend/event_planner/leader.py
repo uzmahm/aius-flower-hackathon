@@ -580,5 +580,22 @@ def run(agent: AgentSession, context: Context) -> None:
     """Run the protocol and report the plan plus its privacy cost."""
     result = plan(agent)
     report = _report(result)
-    agent.events.emit({"type": "message", "role": "assistant", "content": report})
+    # `flwr chat` renders output_text deltas and only ends the turn cleanly on
+    # a response.completed event; anything else reads as a crashed run.
+    agent.events.emit({"type": "response.output_text.delta", "delta": report})
+    agent.events.emit(
+        {
+            "type": "response.completed",
+            "response": {
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": report}],
+                    }
+                ],
+            },
+        }
+    )
     print(report)

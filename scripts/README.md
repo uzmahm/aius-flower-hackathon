@@ -21,8 +21,8 @@ the console. Nothing to configure. Add `--no-ui` for terminal output only.
 
 ## Two laptops: you lead, a friend joins
 
-This is the real thing. Only the leader needs an API key, and your friend's
-private profile never leaves their machine.
+This is the real thing. The leader needs an API key; your friend's is
+optional, and their private profile never leaves their machine.
 
 ### On your laptop (the leader)
 
@@ -47,8 +47,13 @@ scripts/new_user.py sam                          # their profile, on their disk
 scripts/join.sh sam --leader 10.35.4.9           # the address you sent them
 ```
 
-They need no API key. `join.sh` checks it can reach you first and tells you
-what to fix if it cannot.
+The address can also go second without the flag: `scripts/join.sh sam 10.35.4.9`.
+User names are lowercase (`sam`, not `Sam`), matching the profile file.
+
+An API key is optional. Each agent calls the model with the key on its own
+laptop; without one (`FLWR_MODEL_API_KEY` unset) it decides by simple rules
+over the profile instead, and still sends only yes/no. `join.sh` checks it can
+reach you first and tells you what to fix if it cannot.
 
 ### Then plan something
 

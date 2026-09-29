@@ -80,7 +80,9 @@ Send this to anyone who wants to join, on their own laptop:
     scripts/new_user.py <their-name>
     scripts/join.sh <their-name> --leader $LAN_IP
 
-They do NOT need an API key, and their profile never leaves their laptop.
+An API key is optional for them: with FLWR_MODEL_API_KEY set on their laptop
+their agent uses the model, without it it decides by rules over their profile.
+Their profile never leaves their laptop.
 
 When everyone has joined, be the organiser in another terminal:
 

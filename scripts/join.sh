@@ -3,6 +3,7 @@
 #
 #   scripts/join.sh alex                       # leader is on this machine
 #   scripts/join.sh alex --leader 10.35.4.9    # leader is on someone else's
+#   scripts/join.sh alex 10.35.4.9             # same thing
 #   scripts/join.sh alex --leader 10.35.4.9 --port 9160
 #
 # Your profile is read from backend/event_planner/users/<user>.json ON THIS
@@ -10,7 +11,9 @@
 # never sends your calendar, budget or needs anywhere. All the leader ever
 # gets back is yes/no answers to concrete offers.
 #
-# You do not need an API key -- the leader's SuperLink holds one for everyone.
+# An API key is optional. Your agent calls the model with the key on THIS
+# laptop (FLWR_MODEL_API_KEY, or backend/.env); without one it decides by
+# simple rules over your profile instead. Either way only yes/no leaves.
 # Ctrl+C leaves the event.
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -28,7 +31,7 @@ while [[ $# -gt 0 ]]; do
     --port)   PORT="$2";   shift 2 ;;
     -h|--help) sed -n '2,14p' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 1 ;;
-    *)  USER_SLUG="$1"; shift ;;
+    *)  if [[ -z "$USER_SLUG" ]]; then USER_SLUG="$1"; else LEADER="$1"; fi; shift ;;
   esac
 done
 
