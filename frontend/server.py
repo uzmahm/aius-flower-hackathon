@@ -230,7 +230,7 @@ def demo(url: str, speed: float = 1.0) -> None:
         env={**os.environ, "PYTHONPATH": str(BACKEND_DIR)},
     ).stdout
     events = [e for e in map(parse, out.splitlines()) if e]
-    HUB.reset(run_id="demo", source="dryrun", profiles=profiles())
+    HUB.reset(run_id="demo", source="simulate", profiles=profiles())
     show(url)
     for _ in range(50):  # give the window a moment to connect
         if HUB.has_clients():

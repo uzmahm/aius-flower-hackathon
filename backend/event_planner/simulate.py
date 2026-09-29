@@ -59,35 +59,48 @@ def busy_slots(calendar: list[str]) -> set[str]:
     return busy
 
 
-def accepts(user: str, offer: dict[str, Any]) -> bool:
-    """One participant's private decision about one offer.
+def why_rejected(user: str, offer: dict[str, Any]) -> str | None:
+    """Why this participant says no, or None if they say yes.
 
-    Every reason below stays inside this function, which is the point: the
-    only thing that leaves is the bool it returns.
+    This string is the thing the whole design exists to keep off the wire.
+    It never leaves the node: `accepts` returns only the bool, and the reason
+    is available here purely so the narrator views -- the console's private
+    panels and the report -- can show what the leader did not learn.
     """
     private = profiles.load_private(user)
     _, end = (int(part) for part in offer["slot"].split("-"))
 
     if offer["slot"] in busy_slots(private.get("calendar", [])):
-        return False                                       # calendar clash
+        return "a calendar clash"
     if end > private.get("curfew_hour", 24):
-        return False                                       # cannot get home
+        return f"no way home after {private['curfew_hour']}:00"
     budget = private.get("budget_usd")
     if budget is not None and activities.BAND_SPEND[offer["price_band"]] > budget:
-        return False                                       # over their ceiling
+        return f"over their ${budget} ceiling"
     required = set(private.get("needs", []))
     if not offer["serves_food"]:
         # A dietary requirement does not bind on something you do not eat at.
         required -= activities.DIETARY_NEEDS
-    if not required <= set(offer["needs"]):
-        return False                                       # not safe / accessible
-    if set(private.get("avoid_tags", [])) & set(offer["tags"]):
-        return False                                       # wrong kind of thing
+    unmet = sorted(required - set(offer["needs"]))
+    if unmet:
+        return f"it cannot offer {', '.join(t.replace('_', ' ') for t in unmet)}"
+    clash = sorted(set(private.get("avoid_tags", [])) & set(offer["tags"]))
+    if clash:
+        return f"they do not do {', '.join(clash)}"
     if offer["area"] in private.get("avoid_areas", []):
-        return False                                       # too far to get to
+        return f"they cannot get to {offer['area'].replace('_', ' ')}"
     if offer["atmosphere"] in private.get("avoid_atmospheres", []):
-        return False
-    return True
+        return f"they dislike {offer['atmosphere']} rooms"
+    return None
+
+
+def accepts(user: str, offer: dict[str, Any]) -> bool:
+    """One participant's private decision about one offer.
+
+    The reason stays inside `why_rejected`, which is the point: the only
+    thing that leaves this machine is the bool returned here.
+    """
+    return why_rejected(user, offer) is None
 
 
 def wishes_of(user: str) -> dict[str, Any]:

@@ -1,9 +1,12 @@
 """Run the offline protocol and the guard cases, and emit one trace JSON.
 
-The UI in ui.html reads this file's output, so the dashboard always shows a
-real run rather than hand-written numbers. Regenerate after changing policy:
+    uv run --project backend python frontend/report/make_trace.py > trace.json
+    uv run --project backend python frontend/report/build.py
 
-    PYTHONPATH=. python make_trace.py > trace.json
+The report reads this file's output, so the page always shows a real run
+rather than hand-written numbers. Everything narrative on the page is derived
+here from the run, which means it cannot go stale when the catalogue, the
+policy or the set of users changes.
 """
 
 from __future__ import annotations
@@ -12,83 +15,124 @@ import io
 import json
 import sys
 from contextlib import redirect_stdout
+from pathlib import Path
 
-import dryrun
-from agent import personas, planner_side, policy, selfcheck, venues
-from agent.guard import PolicyGrid
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "backend"))
+
+from event_planner import (  # noqa: E402
+    activities,
+    leader,
+    policy,
+    profiles,
+    selfcheck,
+    simulate,
+)
 
 
 def guard_cases() -> list[dict[str, object]]:
     """Replay every adversarial case and record the guard's verdict."""
-    private = personas.load_private("maya")
     rows = []
     for name, payload, should_pass in selfcheck.CASES:
-        inner = selfcheck._FakeInner()
-        events = selfcheck._FakeEvents()
-        grid = PolicyGrid(
-            inner,
-            events,  # type: ignore[arg-type]
-            persona="maya",
-            phase="veto",
-            schema=policy.veto_schema(selfcheck.NUM_OFFERS),
-            secrets=policy.canaries(private),
-            fallback={"verdicts": [False] * selfcheck.NUM_OFFERS},
-        )
-        grid.call(
-            {
-                "type": "function_call",
-                "call_id": "c1",
-                "name": "push_reply_message",
-                "arguments": json.dumps({"payload": payload}),
-            }
-        )
-        blocked = [e for e in events.events if e.get("verdict") == "blocked"]
+        sent, bits, blocked = selfcheck.verdict(payload)
         rows.append(
             {
                 "name": name,
                 "payload": payload,
-                "sent": bool(inner.sent),
+                "sent": sent,
                 "expected_sent": should_pass,
-                "bits": grid.bits,
-                "kind": blocked[0].get("kind") if blocked else None,
-                "reason": blocked[0].get("reason") if blocked else None,
+                "bits": bits,
+                "kind": blocked.get("kind") if blocked else None,
+                "reason": blocked.get("reason") if blocked else None,
             }
         )
     return rows
 
 
+def deniability(result: dict) -> list[dict[str, object]]:
+    """Find offers two people refused for genuinely different private reasons.
+
+    This is the argument the page has to make, and it is made from the run
+    rather than asserted: same bit, different cause, no way to tell them
+    apart from the leader's side.
+    """
+    users = {node: entry["user"] for node, entry in result["roster"].items()}
+    found: list[dict[str, object]] = []
+    for entry in result["rounds"]:
+        for index, offer in enumerate(entry["offers"]):
+            refusers = [
+                users[node]
+                for node, verdicts in entry["verdicts"].items()
+                if not verdicts[index]
+            ]
+            reasons = {
+                user: simulate.why_rejected(user, offer) for user in refusers
+            }
+            distinct = {r for r in reasons.values() if r}
+            if len(distinct) < 2:
+                continue
+            found.append(
+                {
+                    "offer": activities.describe(offer),
+                    "round": entry["round"],
+                    "tally": entry["tallies"][index],
+                    "voters": len(entry["verdicts"]),
+                    "reasons": reasons,
+                    "saw": f"{entry['tallies'][index]} of "
+                    f"{len(entry['verdicts'])} accepted",
+                }
+            )
+    # The most instructive cases are the ones with the most distinct causes.
+    found.sort(key=lambda c: -len({r for r in c["reasons"].values() if r}))
+    return found[:3]
+
+
 def main() -> None:
     """Emit the full trace as JSON on stdout."""
-    agent = dryrun.FakeAgent()
+    agent = simulate.FakeAgent()
     with redirect_stdout(io.StringIO()) as captured:
-        result = dryrun.run_protocol(agent)
+        result = simulate.run_protocol(agent)
     trace = {
         "nodes": [
             {
-                "id": nid,
-                "persona": persona,
-                "role": personas.role_of(persona),
-                # Field NAMES only. The values are exactly what must not travel,
-                # so the trace that feeds the UI does not carry them either.
-                "private_fields": sorted(personas.load_private(persona)),
+                "id": node,
+                "user": entry["user"],
+                "display_name": profiles.display_name(entry["user"]),
+                "role": entry["role"],
+                # Field NAMES only. The values are exactly what must not
+                # travel, so the trace behind the report does not carry them.
+                "private_fields": sorted(
+                    k
+                    for k, v in profiles.load_private(entry["user"]).items()
+                    if v not in ([], "", None)
+                ),
             }
-            for nid, persona in dryrun.NODES.items()
+            for node, entry in sorted(result["roster"].items())
         ],
-        "ledger": [e for e in agent.events.log if e.get("type") == "disclosure.ledger"],
-        "report": captured.getvalue().strip(),
+        "ledger": [
+            e for e in agent.events.log if e.get("type") == "disclosure.ledger"
+        ],
+        "report": "\n".join(
+            line
+            for line in captured.getvalue().strip().splitlines()
+            if not line.startswith("UI_EVENT ")
+        ),
         "schemas": {
+            "identity": {n: f.describe for n, f in policy.identity_schema().items()},
             "wishes": {n: f.describe for n, f in policy.wishes_schema().items()},
             "veto": {
                 n: f.describe
-                for n, f in policy.veto_schema(planner_side.OFFERS_PER_ROUND).items()
+                for n, f in policy.veto_schema(leader.OFFERS_PER_ROUND).items()
             },
             "plan": {n: f.describe for n, f in policy.plan_schema().items()},
         },
         "slots": list(policy.SLOTS),
-        "offers_per_round": planner_side.OFFERS_PER_ROUND,
-        "max_rounds": planner_side.MAX_ROUNDS,
-        "venue_pool": len(venues.VENUES),
+        "activity_tags": list(policy.ACTIVITY_TAGS),
+        "offers_per_round": leader.OFFERS_PER_ROUND,
+        "max_rounds": leader.MAX_ROUNDS,
+        "catalogue_size": len(activities.CATALOGUE),
         "guard_cases": guard_cases(),
+        "deniability": deniability(result),
         **result,
     }
     json.dump(trace, sys.stdout, indent=2)

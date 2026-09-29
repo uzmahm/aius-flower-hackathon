@@ -1,219 +1,193 @@
-# Bounded Disclosure Planner
+# Backend — the Flower AgentApp
 
-Four people plan a surprise birthday dinner. Each has an agent holding their
-real calendar, budget, address and medical details. A planner agent finds a
-venue everyone can attend — and the amount of private information that leaves
-any one machine is bounded, enforced in code, and printed at the end of the run
-as a number.
+Everything in here runs inside the federation. Nothing in here draws anything;
+the front end is in [../frontend](../frontend).
 
-```
-| node | bits disclosed | attributes stated |
-| ---  | ---            | ---               |
-| 11   | 11.00          | none              |
-| 12   | 11.00          | none              |
-| 13   | 11.00          | none              |
-```
+One FAB, two roles. The Flower runtime decides which Grid tools each side
+gets, so the app reads its own role off the toolset rather than guessing:
 
-Nobody states a budget, a price band, a set of free hours, a dietary need or a
-location. Ieva can only spend $50 a head; Maya is coeliac; Emma has no car and
-the last shuttle is 21:40. All three facts decide the booking. None of them
-crosses a wire.
+| where | role | module | runtime tools |
+| --- | --- | --- | --- |
+| SuperLink | the leader | `leader.py` | `get_nodes`, `push_messages`, `pull_messages` |
+| SuperNode | one participant | `participant.py` | `push_reply_message` only |
 
----
-
-## What changed from the original sketch, and why
-
-The first design was a table of two columns per agent: *private* and *shared
-with other agents*. Ieva shares `7–10 PM`, `$$`, Italian; Maya shares "must
-satisfy dietary constraint". The planner pools the sanitised constraints and
-negotiates. Six gaps, in the order they matter.
-
-### 1. Privacy was a prompt, not a control
-
-The starter template's only guard is a sentence in `INSTRUCTIONS`. In
-`collaborative-agent/agent/utils.py` that sentence is *garbled* — the strings
-concatenate to `...do not invent results.EVER send raw data in a message`, with
-the `N` of `NEVER` dropped and no separating space. The shipped template's sole
-privacy control currently instructs the model to do the opposite of what was
-intended, and nothing in the system would notice.
-
-**Now:** `agent/guard.py` wraps the runtime grid with `PolicyGrid`, which
-implements the same `AgentGrid` interface, so the app loop is unchanged. Every
-`push_reply_message` is validated against this node's disclosure schema before a
-Flower `Message` is constructed. A non-compliant payload is never sent; it comes
-back to the model as a tool error. The model may retry, but it cannot widen what
-it is permitted to say. Prompts describe the protocol; they no longer carry a
-control they cannot provide.
-
-### 2. Coarsened constraints still leaked, by intersection
-
-"Must satisfy dietary constraint" plus the planner's final pick is a disclosure.
-If the group lands on a gluten-free venue, everyone has learned Maya's medical
-fact. Emma's `6–9 PM` plus "within selected area" narrows her location far more
-than *exact location: private* suggests.
-
-**Now:** a two-phase protocol replaces constraint publishing.
-
-- **Phase A** asks only what is structurally needed to schedule *anything*:
-  role, hour-slot availability, price band. **9 bits.**
-- **Phase B** proposes a shortlist; each guest returns one accept/reject bit per
-  candidate and **no reasons**. **5 bits** for a shortlist of five.
-- **Phase C** tells the guests the outcome. **1 bit.**
-
-Prefer a veto to a disclosure. The original design published cuisine
-preferences (7 bits, and a genuine taste fingerprint); the veto phase decides
-the same question without them. Total exposure per guest is 15 bits, and the
-*reason* a venue was rejected — the diagnosis, the shuttle timetable, the
-dislike of loud rooms — never leaves the node.
-
-### 3. The topology in the sketch is not the topology the framework allows
-
-The sketch implies agents negotiating with each other. They cannot. In
-`flwr/supercore/task_process/agent/grid.py`, `RuntimeAgentGrid` grants tools by
-role: a SuperNode gets `push_reply_message` **only**, while `get_nodes`,
-`push_messages` and `pull_messages` are reserved for the SuperLink. A guest
-agent physically cannot address another guest.
-
-This is a gift, not an obstacle — it is a runtime-enforced star topology, so the
-set of possible information flows is small enough to reason about. The design now
-states it as the security boundary rather than working against it. It also means
-`push_reply_message` is once-per-instruction (the runtime nulls the metadata
-after use), which is why each phase is a fresh planner-initiated round.
-
-### 4. The planner trusted its inputs
-
-Guarding only the outbound side leaves the planner willing to ingest anything a
-node sends, so one buggy or hostile node could dump raw data into the planner's
-context.
-
-**Now:** `planner_side._exchange` validates every inbound payload against the
-expected phase schema and drops what fails. The guard is symmetric.
-
-### 5. The surprise was undefined
-
-"Birthday Girl's Agent" shares preferences, but nothing said what she must not
-learn — which is the whole point of a surprise party.
-
-**Now:** it is an explicit asymmetric information-flow rule. Her taste ranks the
-venue pool; she is excluded from every offer round and from the booking, so she
-never sees a shortlist or the outcome. `dryrun.py` asserts it.
-
-Her *role* costs zero bits too. No agent discloses whether it is the honouree:
-SuperNode names are infrastructure metadata configured when the federation
-starts, and the organiser names the birthday person in the prompt.
-
-This surfaces a real tension worth naming in the demo: **you cannot both
-preserve the surprise and let her veto.** Letting her reject candidates would
-reveal the shortlist. The resolution — her preferences shape what gets proposed,
-her vetoes are forfeited — is a deliberate trade, not an oversight.
-
-### 6. A model-driven protocol is a demo that fails at 17:30
-
-**Now:** the protocol is plain Python. `planner_side` synthesises Grid tool calls
-directly (`agent.grid.call({...})`), so phases run deterministically in two
-round-trips. The model is called **once**, for the one step needing world
-knowledge: proposing candidate restaurants from pooled, unattributed
-constraints. `llm.ask_json` falls back to a static shortlist rather than raising,
-so a flaky model degrades the shortlist instead of killing the demo.
-
----
-
-## Architecture
-
-```
-                    SuperLink — planner_side.py
-                    deterministic protocol, inbound validation, ledger
-                    tools: get_nodes / push_messages / pull_messages
-                                     |
-              +----------+-----------+-----------+
-              |          |           |           |
-          SuperNode  SuperNode   SuperNode   SuperNode
-            ieva       maya        emma       birthday
-                    node_side.py + guard.PolicyGrid
-                    tools: push_reply_message (runtime-enforced)
-                    holds: raw calendar / budget / medical / address
-```
+## Module map
 
 | file | role |
 | --- | --- |
-| `agent/policy.py` | Declared disclosure fields, their finite domains, and their cost in bits |
-| `agent/guard.py` | `PolicyGrid` — the enforcement point on every outbound reply |
-| `agent/personas.py` | Raw private profiles; `load_private` returns only this node's own |
-| `agent/venues.py` | The public venue pool; an offer is a venue crossed with an hour |
-| `agent/node_side.py` | Guest agent: answer one question within policy, then stop |
-| `agent/planner_side.py` | Deterministic three-phase protocol, ledger, report |
-| `agent/agent_app.py` | One app, role read off the runtime toolset |
-| `agent/selfcheck.py` | Offline adversarial cases against the guard |
-| `dryrun.py` | Full protocol against simulated nodes, no federation or model |
-| `make_trace.py` | Runs both and emits `trace.json` |
-| `ui.template.html` / `build_ui.py` | The console; `build_ui` injects the trace |
+| `agent_app.py` | The single entry point; dispatches on the runtime toolset |
+| `leader.py` | The centralized task: roster, brief, blind search, ledger, report |
+| `participant.py` | One user's agent: answer one question within policy, then stop |
+| `policy.py` | What may leave a node, its finite domain, and its cost in bits |
+| `guard.py` | `PolicyGrid` — the enforcement point on every outbound reply |
+| `brief.py` | Parses the organiser's prompt into activity tags and a honouree |
+| `activities.py` | The public catalogue; an offer is one activity crossed with one slot |
+| `profiles.py` | Loads one user's raw profile from `users/` |
+| `users/*.json` | One file per person. This is the whole registry |
+| `llm.py` | Model client and the tool loop |
+| `ui_events.py` | The `UI_EVENT` lines the console reads |
+| `selfcheck.py` | Offline adversarial cases against the guard |
+| `simulate.py` | The whole protocol against simulated users, no federation, no model |
 
-## Run it
-
-Verify the guard with no federation and no model — six adversarial payloads,
-including a prompt-injection-shaped one:
-
-```bash
-cd dinner-planner
-PYTHONPATH=. python -m agent.selfcheck
-```
-
-Rehearse the whole protocol against simulated guests:
+## Run the checks
 
 ```bash
-PYTHONPATH=. python dryrun.py
+uv run python -m event_planner.selfcheck    # can a participant's agent leak?
+uv run python -m event_planner.simulate     # the whole protocol, offline
+uv run python -m event_planner.simulate "Plan an active morning in nature. No surprise."
 ```
 
-Rebuild the console from a fresh run — the UI reads the trace, so it cannot
-show numbers the protocol did not produce:
+Both are also wrapped by `scripts/demo.sh` from the repo root.
 
-```bash
-PYTHONPATH=. python make_trace.py > trace.json
-python build_ui.py          # writes ui.html
+## The protocol
+
+Four rounds, all driven by plain Python. The model is called exactly once, for
+the single step that needs taste.
+
+| phase | who | what they send | bits |
+| --- | --- | --- | --- |
+| `identity` | everyone | their configured slug and role | **0** |
+| `wishes` | guest of honour only | activity tags, atmosphere, new-or-not | **11** |
+| `veto` | every participant, per round | one accept/reject bit per offer | **5** |
+| `plan` | everyone who may know | acknowledged | **1** |
+
+A participant who is not the guest of honour therefore spends
+`5 × rounds + 1` bits and states no attribute at all.
+
+### Why identity is free
+
+A node's slug is the one the operator typed when they started the SuperNode
+(`--node-config 'user="maya"'`). It is not derived from anyone's private
+profile, so answering it discloses nothing the operator did not already
+publish. `policy.label_field` enforces the shape — 24 lowercase characters, no
+spaces, no punctuation — which is what stops it becoming a free-text side
+channel. Everything else in the system follows from this round: it is how the
+leader learns who is present without anybody hardcoding a roster.
+
+### Why there is no availability round and no budget round
+
+Both were in an earlier design and both are the sensitive thing itself, only
+coarsened. A price band **is** the budget: "I am a $ person" is the socially
+costly fact, not the figure behind it. An availability subset **is** the
+calendar: someone free in exactly one slot has disclosed a busy week.
+
+Both are decidable by veto instead, so neither is asked.
+
+> A disclosed attribute is an assertion. A veto is deniable.
+
+A rejection could be a meeting, a commute, a budget ceiling, a coeliac
+diagnosis, a bad knee or a dislike of crowds. From the leader's side they are
+identical. `frontend/report/` derives this from an actual run rather than
+asserting it: it finds the offers two people refused for genuinely different
+reasons and shows the two identical `false` bits.
+
+### Why the guard is code, not a prompt
+
+The stock `collaborative-agent` template's only privacy control is a sentence
+in `INSTRUCTIONS`, and in `templates/collaborative-agent/agent/utils.py` that
+sentence is garbled — the strings concatenate to
+`...do not invent results.EVER send raw data in a message`, with the `N` of
+`NEVER` dropped. The shipped template's sole privacy control currently
+instructs the model to do the opposite of what was intended, and nothing in
+the system would notice.
+
+`guard.PolicyGrid` implements the same `AgentGrid` interface as the runtime
+grid, so the app loop is unchanged, and validates every `push_reply_message`
+against this node's schema before a Flower message is constructed. A
+non-compliant payload is never sent; it comes back to the model as a tool
+error. The model may retry, but it cannot widen what it is permitted to say.
+
+The guard is symmetric: `leader._exchange` validates every inbound payload
+too, and drops what fails, so one buggy or hostile node cannot dump raw data
+into the leader's context.
+
+### The surprise is an information-flow rule
+
+If the brief names a guest of honour and does not say otherwise, that person's
+node is excluded from every offer round and from the plan broadcast. Their
+stated activity preferences rank the catalogue; they never see a shortlist or
+the outcome. `simulate.py` asserts it.
+
+This surfaces a real tension worth naming: **you cannot both preserve the
+surprise and let them veto.** Letting them reject candidates would reveal the
+shortlist. The resolution — their preferences shape what gets proposed, their
+vetoes are forfeited — is a deliberate trade. Say "no surprise" in the brief
+and they vote like everybody else.
+
+## How the blind search works
+
+The leader proposes offers and sees only tallies, so it has to infer which
+hours, prices and kinds of activity the group can live with — never why, and
+never which person.
+
+It estimates the chance everyone accepts an offer as the **product** of the
+accept rates it has seen for each of the offer's public attributes. The
+multiplication is the whole trick: an activity two people out of three can do,
+at an hour two out of three can make, is not a two-out-of-three offer, because
+the refusers are probably different people. Summing the evidence hides that.
+
+Rates are smoothed toward the overall prior so one round cannot write off a
+whole price band, and offers built from attributes nobody has asked about get
+a small optimism bonus.
+
+Measured over 237 random feasible rosters of 3–6 people, this finds an offer
+everyone accepts **88.6%** of the time within `MAX_ROUNDS`, against 87.3% for
+pure exploitation. The honest reading: the gain is within noise, and a real
+improvement would need a better question, not a better coefficient.
+
+## Adding a person
+
+A user is a JSON file in `users/`. That is the entire registry.
+
+```json
+{
+  "display_name": "Alex",
+  "emoji": "🧗",
+  "role": "participant",
+  "private": {
+    "calendar": ["09:00-10:00 gym class"],
+    "budget_usd": 70,
+    "curfew_hour": 22,
+    "needs": ["step_free"],
+    "like_tags": ["nature", "active"],
+    "avoid_tags": ["shopping"],
+    "avoid_areas": [],
+    "avoid_atmospheres": [],
+    "home_area": "midtown",
+    "notes": "training for a half marathon"
+  }
+}
 ```
 
-Against a real federation, start one SuperNode per persona:
+Set `"role": "honouree"` to make someone the person being surprised. Use
+`scripts/new_user.py` rather than writing these by hand — it validates the
+vocabularies. Everything under `private` is what the guard exists to keep
+local; nothing in it is shaped for disclosure.
 
-```bash
-flower-supernode --superlink 127.0.0.1:9092 --insecure \
-  --node-config 'persona="maya"'
-```
-
-Personas are `ieva`, `maya`, `emma`, `birthday`. Without `--node-config`,
-`personas.persona_for` assigns one deterministically from the node id, so the
-demo still runs on a federation started without per-node config.
-
-## Demo beats, in order
-
-1. **The claim.** Show the ledger table. Every guest, 15 bits, total 45.
-2. **The blocked exfiltration.** Run `selfcheck`. A model that tries to send
-   `"coeliac disease, strict gluten avoidance"` in a permitted-looking field is
-   blocked by schema; one that smuggles it into an allowed field's *value* is
-   blocked by the raw-value scan. Neither verdict depends on the model.
-3. **The fix for the leak nobody asks about.** Maya's veto of every
-   non-gluten-free venue is indistinguishable from a veto on price or
-   atmosphere. The planner learns a bit, not a diagnosis.
-4. **The typo.** Show `utils.py` in the starter. Prompt-level privacy is not a
-   control, and here is a shipped example of it silently inverting.
+In a real deployment each node would read only its own file from local
+storage. They are colocated here so the demo runs from one checkout, and
+`load_private` only ever returns one of them.
 
 ## Honest limitations
 
 State these before a judge finds them.
 
-- **11 bits is a bound, not zero.** A guest who rejects every offer in a round
-  has still said something about how constrained they are, even without saying
-  what constrains them.
-- **Blind search costs rounds.** Each additional round is 5 more bits per
-  guest. The privacy win is paid for in round-trips, not for free.
-- **The planner sees attribution.** `src_node_id` is on every reply, so the
-  planner knows who sent which bit. A single-planner star cannot blind that
-  without a shuffler or aggregation; the mitigation here is minimisation, not
-  anonymity. Candidate generation is fed pooled, unattributed constraints, which
-  narrows what the *model* sees but not what the planner process could log.
-- **Repeated runs compose.** Bits add up across dinners. A production version
-  would need a per-participant budget that depletes, which `policy.bits` already
-  gives the machinery for.
+- **11 bits is a bound, not zero.** Someone who rejects every offer in a round
+  has still said something about how constrained they are, even without
+  saying what constrains them.
+- **Blind search costs rounds,** and it does not always succeed — see the
+  88.6% above. Each extra round is 5 more bits per person. The privacy win is
+  paid for in round-trips.
+- **The leader sees attribution.** `src_node_id` is on every reply, so it
+  knows who sent which bit. A single-leader star cannot blind that without a
+  shuffler or aggregation; the mitigation here is minimisation, not anonymity.
+- **Repeated runs compose.** Bits add up across events. A production version
+  would need a per-participant budget that depletes, which `policy.bits`
+  already gives the machinery for.
 - **The raw-value scan is defence in depth, not the primary control.** It is a
   token-level substring check on a 5-character floor; it catches quoting and
   copying, not clever paraphrase. The schema is what makes paraphrase
   unnecessary to catch — there is no free-text field to paraphrase into.
+- **The identity round's zero-bit claim rests on an assumption:** that the
+  operator chose the slug, not the person's private data. Name a node
+  `coeliac-maya` and that assumption is false.

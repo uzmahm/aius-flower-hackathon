@@ -445,13 +445,30 @@ function fresh() {
 
 function adoptProfiles(next) {
   profiles = next || {};
-  ORDER = Object.keys(profiles).sort();
+  rebuild(Object.keys(profiles).sort());
+}
+
+/* Anyone in the roster whose profile is not on this machine is a remote
+   participant -- someone who joined from their own laptop. The console
+   cannot draw their private panel because it genuinely does not have it,
+   which is the entire point of the system. Give them a station anyway. */
+function adoptRemote(users) {
+  const extra = users.filter(u => u && !profiles[u]);
+  if (!extra.length) return;
+  for (const u of extra) profiles[u] = { remote: true };
+  rebuild([...ORDER, ...extra]);
+}
+
+function rebuild(order) {
+  ORDER = [...new Set(order)];
   PEOPLE = {};
   ORDER.forEach((u, i) => {
+    const entry = profiles[u] || {};
     PEOPLE[u] = {
-      name: profiles[u].display_name || titleCase(u),
-      emoji: profiles[u].emoji || "🙂",
-      role: profiles[u].role || "participant",
+      name: entry.display_name || titleCase(u),
+      emoji: entry.emoji || (entry.remote ? "💻" : "🙂"),
+      role: entry.role || "participant",
+      remote: !!entry.remote,
       ...PALETTE[i % PALETTE.length],
     };
   });
@@ -473,7 +490,7 @@ function buildStations() {
       const who = PEOPLE[p];
       return `<section class="agent" id="agent-${p}" style="--tint:${who.tint};--accent:${who.accent}">
         <header class="tag"><span class="av" id="av-${p}">${who.emoji}</span>
-          <span><b>${esc(who.name)}</b><small id="role-${p}">${who.role === "honouree" ? "Guest of honour" : "Participant"}</small></span></header>
+          <span><b>${esc(who.name)}</b><small id="role-${p}">${who.remote ? "Remote · another laptop" : who.role === "honouree" ? "Guest of honour" : "Participant"}</small></span></header>
         <div class="bubble" id="bubble-${p}">Waiting for the leader…</div>
         <div class="private" id="private-${p}"></div>
       </section>`;
@@ -488,6 +505,13 @@ function renderPrivate() {
     const el = $(`private-${p}`);
     const data = profiles[p]?.private;
     if (!el) continue;
+    if (PEOPLE[p].remote) {
+      el.innerHTML = `<h4>🔒 Private · another laptop</h4><div class="more">`
+        + `${esc(PEOPLE[p].name)} joined from their own machine. This console `
+        + `has no copy of their calendar, budget or needs — and neither does `
+        + `the leader.</div>`;
+      continue;
+    }
     if (!data) { el.innerHTML = `<h4>🔒 Private</h4><div class="more">Profile stays on ${esc(PEOPLE[p].name)}'s laptop</div>`; continue; }
     const rows = PRIVATE_ROWS.filter(([k]) => nonEmpty(data[k]));
     const shown = rows.slice(0, 5);
@@ -653,6 +677,7 @@ const handlers = {
 
   /* Who is actually here is discovered at runtime, not configured here. */
   roster(e) {
+    adoptRemote(e.nodes.map(n => n.user));
     for (const n of e.nodes) if (n.user) S.nodes[n.id] = n.user;
     S.honoree = e.honouree;
     S.guests = e.guests;
@@ -666,7 +691,9 @@ const handlers = {
       if (!id) { say(p, "Not connected", "No SuperNode running for this user"); continue; }
       const hidden = (e.excluded || []).includes(id);
       $(`agent-${p}`).classList.toggle("honoree", id === e.honouree);
-      $(`role-${p}`).textContent = id === e.honouree ? "Guest of honour · SuperNode" : "Participant · SuperNode";
+      $(`role-${p}`).textContent = PEOPLE[p].remote
+        ? "Remote · their own laptop"
+        : id === e.honouree ? "Guest of honour · SuperNode" : "Participant · SuperNode";
       say(p, `Hi! I'm ${esc(PEOPLE[p].name)}'s agent 👋`,
         hidden ? "I keep the surprise, and everything else, on this laptop"
                : "Everything I know stays on this laptop");

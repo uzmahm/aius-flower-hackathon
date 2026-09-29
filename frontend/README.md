@@ -1,36 +1,72 @@
-# Event Planner console
+# Frontend — what a human looks at
 
-A live window that shows the four agents planning. It opens by itself when a
-prompt in `flwr chat` starts a `dinner-planner` run. The plan panel on the right
-only appears once every guest has accepted the same offer.
+Nothing in here is part of the federation. Both surfaces read the leader's
+output; neither can show a number the protocol did not produce.
 
-## How it works
+| | what it is | when to use it |
+| --- | --- | --- |
+| `index.html` + `server.py` | The live console | While a run is happening |
+| `report/` | A static run report | After a run, to read the argument |
 
-- `dinner-planner/agent/ui_events.py`: the planner prints one `UI_EVENT {json}`
-  line per protocol step (start, ask, reply, round, tally, consensus, done).
-- `ui/server.py` polls the SuperLink for new runs, follows each one with
-  `flwr log <run> --stream`, and pushes the events to the window over
-  Server-Sent Events. This works on a local SuperLink and on SuperGrid.
-- `ui/index.html` is the window.
+## The live console
 
-The private panels are a narrator's view read from `personas.py` on this
-machine. They are never sent anywhere. The speech bubbles show only what really
-crossed the network: yes/no answers, never reasons.
-
-## Run it
-
-From the repo root:
+A window that shows the agents planning in real time. It opens by itself when
+a prompt in `flwr chat` starts a run.
 
 ```bash
-# Local federation (dinner-planner/run_local.sh starts this for you)
-uv run --project dinner-planner python ui/server.py
-
-# Watch SuperGrid instead
-uv run --project dinner-planner python ui/server.py --superlink supergrid
-
-# Rehearse without any federation: replays dryrun.py
-uv run --project dinner-planner python ui/server.py --demo
+# from the repo root
+uv run --project backend python frontend/server.py                     # local SuperLink
+uv run --project backend python frontend/server.py --superlink supergrid
+uv run --project backend python frontend/server.py --demo              # no federation
 ```
 
-The "Replay demo" button in the window does the same replay. The console
-lives at http://127.0.0.1:8765/.
+`scripts/run_local.sh` starts it for you; `scripts/demo.sh` runs the replay.
+It lives at <http://127.0.0.1:8765/>.
+
+### How it gets its data
+
+1. `backend/event_planner/ui_events.py` prints one `UI_EVENT {json}` line per
+   protocol step: `start`, `roster`, `ask`, `reply`, `round`, `tally`,
+   `consensus`, `done`.
+2. `server.py` polls the SuperLink for new runs, follows each with
+   `flwr log <run> --stream`, and pushes the events to the window over
+   Server-Sent Events. This works identically against a local SuperLink and
+   SuperGrid.
+3. `index.html` renders them.
+
+It knows nothing about who is taking part until the server tells it. The
+roster comes from the leader's identity round and the avatars, names and
+colours come from `backend/event_planner/users/*.json`, so a user you spawn
+with `scripts/new_user.py` appears with no change here.
+
+Anyone in the roster whose profile is **not** on this machine — a friend who
+joined from their own laptop — still gets a station, drawn with a 💻 avatar
+and an empty private panel. That is not a gap to fill in later: the console
+has no copy of their calendar or budget because the leader does not either.
+
+### The private panels are a narrator's view
+
+The panel under each agent is read from that user's profile **on this
+machine** and is never sent anywhere. It is there so you can see what the
+agent is holding back. The speech bubbles show only what really crossed the
+network: yes/no answers, never reasons.
+
+## The static report
+
+```bash
+scripts/report.sh        # regenerate and open
+```
+
+Two steps behind that:
+
+- `make_trace.py` runs the offline protocol and the guard cases and writes
+  `trace.json` — field *names* from the private profiles, never their values.
+- `build.py` injects the trace into `template.html` and writes `report.html`.
+
+Everything narrative on the page is derived from the run, including the
+"why a rejection is not a disclosure" cards: `make_trace.deniability` finds
+offers that two people refused for genuinely different private reasons and
+shows the two identical `false` bits. Change the catalogue or the policy and
+the page follows, rather than going quietly stale.
+
+`trace.json` and `report.html` are build products and are gitignored.
