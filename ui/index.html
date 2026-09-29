@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&display=swap">
+<style>
+  :root {
+    --pink-50: #fff5f9;
+    --pink-100: #fde7f0;
+    --pink-200: #f9cfe0;
+    --pink-300: #f5a9c6;
+    --pink-500: #e0679a;
+    --pink-700: #a8356a;
+    --ink: #4a2a3d;
+    --ink-soft: #85607a;
+    --line: #efc3d6;
+    --ok: #3f9a6b;
+    --no: #c9587a;
+    --card: #ffffffee;
+    --pixel: "Pixelify Sans", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    --body: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font: 14px/1.4 var(--body);
+    color: var(--ink);
+    background: #f4c6d8;
+    padding: 12px;
+  }
+
+  /* ---- window chrome ---------------------------------------------------- */
+  .window {
+    height: calc(100vh - 24px);
+    min-height: 640px;
+    display: flex;
+    flex-direction: column;
+    border: 3px solid var(--pink-500);
+    border-radius: 14px;
+    background: var(--pink-50);
+    box-shadow: 0 8px 0 #d98aad, 0 16px 40px #a8356a33;
+    overflow: hidden;
+  }
+  .titlebar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: linear-gradient(#fbd6e5, #f7bcd3);
+    border-bottom: 3px solid var(--pink-500);
+  }
+  .titlebar h1 {
+    margin: 0;
+    font: 700 22px var(--pixel);
+    letter-spacing: .5px;
+  }
+  .titlebar .cat { font-size: 24px; }
+  .status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: #fff9;
+    border: 2px solid var(--line);
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .status .dot { width: 9px; height: 9px; border-radius: 50%; background: #c9a7b8; }
+  .status.live .dot { background: #3fbf7f; box-shadow: 0 0 0 0 #3fbf7f88; animation: ping 1.6s infinite; }
+  @keyframes ping { 70% { box-shadow: 0 0 0 8px #3fbf7f00; } 100% { box-shadow: 0 0 0 0 #3fbf7f00; } }
+  .btn {
+    font: 600 13px var(--body);
+    color: var(--pink-700);
+    background: #fff;
+    border: 2px solid var(--pink-300);
+    border-radius: 10px;
+    padding: 5px 12px;
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--pink-100); }
+
+  /* ---- layout ----------------------------------------------------------- */
+  .main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr;
+    min-height: 0;
+    transition: grid-template-columns .5s ease;
+  }
+  .main.with-plan { grid-template-columns: 1fr 360px; }
+
+  .stage {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(250px, 1fr) minmax(300px, 1.1fr) minmax(250px, 1fr);
+    gap: 18px;
+    padding: 20px;
+    overflow: auto;
+    background:
+      radial-gradient(ellipse 42% 30% at 50% 62%, #f8c9dc 0 60%, transparent 61%),
+      radial-gradient(ellipse 48% 35% at 50% 62%, #fbdbe8 0 70%, transparent 71%),
+      linear-gradient(#fdeef4 0 58%, #f9dbe7 58% 100%);
+  }
+  .col { display: flex; flex-direction: column; justify-content: space-between; gap: 18px; z-index: 1; }
+  .center { justify-content: flex-start; align-items: stretch; }
+
+  svg.wires {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .wire { fill: none; stroke: #e7b3c9; stroke-width: 3; stroke-dasharray: 2 8; stroke-linecap: round; }
+  .wire.out { stroke: var(--pink-500); animation: flow-out .6s linear infinite; }
+  .wire.in { stroke: #6f9fe0; animation: flow-in .6s linear infinite; }
+  @keyframes flow-out { to { stroke-dashoffset: -20; } }
+  @keyframes flow-in { to { stroke-dashoffset: 20; } }
+
+  /* ---- agents ----------------------------------------------------------- */
+  .agent { display: flex; flex-direction: column; gap: 10px; max-width: 340px; }
+  .col.right .agent { align-self: flex-end; align-items: flex-end; }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px 6px 6px;
+    border-radius: 14px;
+    background: var(--card);
+    border: 2px solid var(--line);
+    width: fit-content;
+  }
+  .av {
+    width: 44px; height: 44px;
+    display: grid; place-items: center;
+    font-size: 24px;
+    border-radius: 12px;
+    background: var(--tint, var(--pink-100));
+    border: 2px solid var(--accent, var(--pink-300));
+  }
+  .tag b { font: 700 17px var(--pixel); }
+  .tag small { display: block; font-size: 11px; color: var(--ink-soft); }
+  .agent.honoree .tag { border-color: var(--pink-500); }
+
+  .bubble {
+    position: relative;
+    padding: 10px 14px;
+    border-radius: 16px;
+    background: #fff;
+    border: 2px solid var(--line);
+    box-shadow: 0 3px 0 #f1cddc;
+    min-height: 44px;
+    max-width: 300px;
+    transition: transform .25s ease;
+  }
+  .bubble.pop { animation: pop .35s ease; }
+  @keyframes pop { 0% { transform: scale(.92); } 60% { transform: scale(1.03); } 100% { transform: scale(1); } }
+  .bubble .sub { display: block; margin-top: 4px; font-size: 11.5px; color: var(--ink-soft); }
+  .typing { display: inline-flex; gap: 4px; vertical-align: middle; margin-left: 6px; }
+  .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--pink-300); animation: blink 1s infinite; }
+  .typing i:nth-child(2) { animation-delay: .15s; }
+  .typing i:nth-child(3) { animation-delay: .3s; }
+  @keyframes blink { 50% { opacity: .25; transform: translateY(-2px); } }
+  .chips { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+  .chip {
+    font: 700 11px var(--body);
+    padding: 2px 7px;
+    border-radius: 7px;
+    background: #fbe1ea;
+    color: var(--no);
+  }
+  .chip.yes { background: #dcf3e6; color: var(--ok); }
+
+  .private {
+    background: #fffaf6ee;
+    border: 2px dashed #e8b7c9;
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    width: 100%;
+    max-width: 300px;
+  }
+  .private h4 { margin: 0 0 4px; font: 700 13px var(--pixel); color: var(--pink-700); }
+  .private ul { list-style: none; margin: 0; padding: 0; }
+  .private li { display: flex; gap: 7px; padding: 2px 0; }
+  .private li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .private .more { color: var(--ink-soft); }
+
+  /* ---- center: board, hub, feed ----------------------------------------- */
+  .board {
+    background: #fffdf8;
+    border: 6px solid #b98a73;
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: 0 5px 0 #9c6f59;
+  }
+  .board h2 { margin: 0; text-align: center; font: 700 24px var(--pixel); color: var(--pink-700); }
+  .board .round { text-align: center; color: var(--ink-soft); font-size: 12px; margin: 2px 0 8px; }
+  .offers { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+  .offer {
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    background: var(--pink-50);
+    border: 2px solid transparent;
+    font-size: 12.5px;
+  }
+  .offer .n { font: 700 13px var(--pixel); color: var(--pink-700); }
+  .offer .meta { color: var(--ink-soft); font-size: 11.5px; }
+  .dots { display: flex; gap: 3px; }
+  .dots i { width: 10px; height: 10px; border-radius: 3px; background: #ecd3de; }
+  .dots i.y { background: var(--ok); }
+  .offer.win { border-color: var(--ok); background: #e7f6ee; }
+  .offer.dim { opacity: .55; }
+  .empty { text-align: center; color: var(--ink-soft); padding: 14px 4px; }
+
+  .hub {
+    align-self: center;
+    margin-top: 18px;
+    width: 190px;
+    text-align: center;
+    padding: 14px 12px 12px;
+    border-radius: 50% 50% 22px 22px / 40% 40% 22px 22px;
+    background: radial-gradient(circle at 50% 30%, #fff 0 45%, #fde3ee 70%);
+    border: 3px solid var(--pink-300);
+    box-shadow: 0 5px 0 #eab0c8;
+  }
+  .hub .flower { font-size: 42px; line-height: 1; display: inline-block; }
+  .hub.busy .flower { animation: spin 4s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hub b { display: block; font: 700 20px var(--pixel); }
+  .hub small { display: block; font-size: 12px; color: var(--ink-soft); min-height: 32px; }
+
+  .feed {
+    margin-top: auto;
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .feed h4 { margin: 0 0 4px; font: 700 13px var(--pixel); color: var(--pink-700); }
+  .feed ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; max-height: 110px; overflow: auto; }
+  .feed li { color: var(--ink-soft); }
+  .feed li:first-child { color: var(--ink); font-weight: 600; }
+
+  .banner {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: #fff3d6;
+    border: 2px solid #f0cf85;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  /* ---- plan panel ------------------------------------------------------- */
+  .plan {
+    border-left: 3px solid var(--pink-500);
+    background: #fff7fa;
+    overflow: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    animation: slide .5s ease;
+  }
+  @keyframes slide { from { transform: translateX(40px); opacity: 0; } }
+  .plan h3 { margin: 0; font: 700 19px var(--pixel); display: flex; gap: 8px; align-items: center; }
+  .card { background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 14px; }
+  .hero {
+    height: 120px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    font-size: 56px;
+    background:
+      radial-gradient(circle at 20% 30%, #ffe2a8 0 12%, transparent 13%),
+      radial-gradient(circle at 75% 25%, #ffd0e2 0 10%, transparent 11%),
+      linear-gradient(135deg, #f7b58f, #e27d9f 60%, #b25c8e);
+    margin-bottom: 12px;
+  }
+  .venue { margin: 0; font: 700 22px var(--pixel); color: var(--pink-700); }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+  .tags span { padding: 3px 10px; border-radius: 8px; background: var(--pink-100); font-size: 12px; }
+  .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
+  .people { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .people li { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; }
+  .people .av { width: 34px; height: 34px; font-size: 18px; border-radius: 9px; }
+  .people .ok { color: var(--ok); font-weight: 600; }
+  .people .shh { color: var(--pink-700); font-weight: 600; }
+  table.ledger { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.ledger td { padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  table.ledger td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  table.ledger tr.total td { font-weight: 700; border-bottom: 0; }
+  .note { font-size: 12px; color: var(--ink-soft); margin: 8px 0 0; }
+  .confirm {
+    font: 700 20px var(--pixel);
+    color: var(--pink-700);
+    padding: 12px;
+    border-radius: 14px;
+    border: 3px solid var(--pink-500);
+    background: linear-gradient(#ffd9e8, #f8b6cf);
+    box-shadow: 0 4px 0 #d17aa0;
+    cursor: pointer;
+  }
+  .confirm:active { transform: translateY(2px); box-shadow: 0 2px 0 #d17aa0; }
+  .confirm.done { background: linear-gradient(#d9f5e5, #b5e6ca); border-color: var(--ok); color: #226b47; box-shadow: 0 4px 0 #7cc39d; }
+
+  /* ---- narrow screens --------------------------------------------------- */
+  @media (max-width: 980px) {
+    .main.with-plan { grid-template-columns: 1fr; }
+    .stage { grid-template-columns: 1fr; }
+    .col.right .agent { align-self: stretch; align-items: stretch; }
+    .agent, .bubble, .private { max-width: none; }
+    svg.wires { display: none; }
+    .plan { border-left: 0; border-top: 3px solid var(--pink-500); }
+  }
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar">
+    <span class="cat">🐱</span>
+    <h1>Event Planner</h1>
+    <div class="status" id="status"><span class="dot"></span><span id="status-text">Connecting…</span></div>
+    <button class="btn" id="replay" title="Replay the offline dry run">▶ Replay demo</button>
+  </div>
+
+  <div class="main" id="main">
+    <div class="stage" id="stage">
+      <svg class="wires" id="wires"></svg>
+      <div class="col left" id="col-left"></div>
+      <div class="col center">
+        <div class="board">
+          <h2 id="board-title">Birthday Dinner</h2>
+          <div class="round" id="board-round">Waiting for a prompt</div>
+          <ol class="offers" id="offers"><li class="empty">Send a prompt in <code>flwr chat</code> to start planning.</li></ol>
+        </div>
+        <div class="hub" id="hub">
+          <span class="flower">🌸</span>
+          <b>Flower</b>
+          <small id="hub-text">Planner on the SuperLink</small>
+        </div>
+        <div class="banner" id="banner" hidden></div>
+        <div class="feed">
+          <h4>What's happening</h4>
+          <ol id="feed"></ol>
+        </div>
+      </div>
+      <div class="col right" id="col-right"></div>
+    </div>
+
+    <aside class="plan" id="plan" hidden>
+      <h3>💗 Plan</h3>
+      <div class="card">
+        <h3 style="font-size:16px">✨ Everyone agreed on</h3>
+        <div class="hero" id="plan-hero">🍽️</div>
+        <p class="venue" id="plan-venue"></p>
+        <div class="tags" id="plan-tags"></div>
+        <ul class="facts" id="plan-facts"></ul>
+      </div>
+      <div class="card">
+        <h3 style="font-size:16px">👥 Agent Summary</h3>
+        <ul class="people" id="plan-people" style="margin-top:10px"></ul>
+      </div>
+      <div class="card">
+        <h3 style="font-size:16px">🔒 What left each laptop</h3>
+        <table class="ledger" id="plan-ledger" style="margin-top:8px"></table>
+        <p class="note">Only yes/no answers to concrete offers. No budget, diet, calendar or address was ever sent.</p>
+      </div>
+      <button class="confirm" id="confirm">✨ Confirm Plan ✨</button>
+    </aside>
+  </div>
+</div>
+
+<script>
+const PEOPLE = {
+  ieva:     { name: "Ieva",  emoji: "🎧", tint: "#fde7f0", accent: "#f5a9c6" },
+  maya:     { name: "Maya",  emoji: "🌿", tint: "#e3effc", accent: "#9fc3ec" },
+  emma:     { name: "Emma",  emoji: "🍣", tint: "#ece6fb", accent: "#b9a6ec" },
+  birthday: { name: "Sofia", emoji: "🎀", tint: "#fff0e0", accent: "#f3bf8a", tag: "Birthday girl" },
+};
+const LAYOUT = { left: ["ieva", "emma"], right: ["maya", "birthday"] };
+const CUISINE = { japanese: "🍣", italian: "🍝", korean: "🍲", thai: "🍜", american: "🍔", mexican: "🌮", indian: "🍛" };
+const PRIVATE_ROWS = [
+  ["calendar", "📅", v => `Calendar · ${v.length} event${v.length === 1 ? "" : "s"}`],
+  ["budget_usd", "💳", v => `Budget: $${v}`],
+  ["medical", "🩺", v => `Medical: ${v}`],
+  ["dietary", "🥗", v => `Dietary: ${v}`],
+  ["home_address", "📍", v => `Home: ${v}`],
+  ["exact_location", "📍", v => `Lives: ${v}`],
+  ["transport", "🚌", v => `Transport: ${v}`],
+  ["commitments", "🗓️", v => v],
+  ["dislikes", "✖️", v => `Dislikes: ${v.join(", ")}`],
+  ["tastes", "🍴", v => `Likes: ${v.join(", ")}`],
+  ["wishlist", "💝", v => `Wishlist: ${v.join(", ")}`],
+  ["favourite_foods", "⭐", v => `Favourites: ${v.join(", ")}`],
+  ["visited_recently", "📌", v => `Visited: ${v.join(", ")}`],
+];
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const titleCase = s => String(s).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+const hour = h => { const n = +h % 24; return `${n % 12 || 12}:00 ${n < 12 ? "AM" : "PM"}`; };
+const slotText = slot => { const [a, b] = slot.split("-"); return `${hour(a)} – ${hour(b)}`; };
+
+let profiles = {};
+let S = fresh();
+function fresh() {
+  return { nodes: {}, honoree: null, guests: [], offers: [], round: 0, bits: {}, verdicts: {}, feed: [] };
+}
+
+/* ---- rendering ---------------------------------------------------------- */
+
+function buildStations() {
+  for (const side of ["left", "right"]) {
+    $(`col-${side}`).innerHTML = LAYOUT[side].map(p => {
+      const who = PEOPLE[p];
+      return `<section class="agent" id="agent-${p}" style="--tint:${who.tint};--accent:${who.accent}">
+        <header class="tag"><span class="av" id="av-${p}">${who.emoji}</span>
+          <span><b>${who.name} Agent</b><small id="role-${p}">${who.tag || "Guest"}</small></span></header>
+        <div class="bubble" id="bubble-${p}">Waiting for the planner…</div>
+        <div class="private" id="private-${p}"></div>
+      </section>`;
+    }).join("");
+  }
+  renderPrivate();
+  requestAnimationFrame(drawWires);
+}
+
+function renderPrivate() {
+  for (const p of Object.keys(PEOPLE)) {
+    const el = $(`private-${p}`);
+    const data = profiles[p]?.private;
+    if (!el) continue;
+    if (!data) { el.innerHTML = `<h4>🔒 Private</h4><div class="more">Profile stays on ${PEOPLE[p].name}'s laptop</div>`; continue; }
+    const rows = PRIVATE_ROWS.filter(([k]) => data[k] !== undefined);
+    const shown = rows.slice(0, 5);
+    el.innerHTML = `<h4>🔒 Private · stays on ${PEOPLE[p].name}'s laptop</h4><ul>` +
+      shown.map(([k, icon, fmt]) => `<li><span>${icon}</span><span title="${esc(fmt(data[k]))}">${esc(fmt(data[k]))}</span></li>`).join("") +
+      (rows.length > shown.length ? `<li class="more">…and ${rows.length - shown.length} more</li>` : "") + "</ul>";
+  }
+}
+
+function say(p, html, sub) {
+  const el = $(`bubble-${p}`);
+  if (!el) return;
+  el.innerHTML = html + (sub ? `<span class="sub">${sub}</span>` : "");
+  el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop");
+}
+const typing = '<span class="typing"><i></i><i></i><i></i></span>';
+
+function feed(text) {
+  S.feed.unshift(text);
+  $("feed").innerHTML = S.feed.slice(0, 12).map(t => `<li>${esc(t)}</li>`).join("");
+}
+
+function hub(text, busy = true) {
+  $("hub-text").textContent = text;
+  $("hub").classList.toggle("busy", busy);
+}
+
+function setStatus(text, live) {
+  $("status-text").textContent = text;
+  $("status").classList.toggle("live", !!live);
+}
+
+function renderBoard(tallies, voters, winner) {
+  if (!S.offers.length) return;
+  $("board-round").textContent = `Round ${S.round} · ${S.offers.length} offers`;
+  $("offers").innerHTML = S.offers.map((o, i) => {
+    const t = tallies ? tallies[i] : null;
+    const dots = tallies ? Array.from({ length: voters }, (_, k) => `<i class="${k < t ? "y" : ""}"></i>`).join("") : "";
+    const cls = winner === undefined ? "" : (i === winner ? "win" : "dim");
+    return `<li class="offer ${cls}"><span class="n">${i + 1}</span>
+      <span><b>${esc(o.name)}</b> ${CUISINE[o.cuisine] || "🍽️"}<br><span class="meta">${slotText(o.slot)} · ${esc(o.price_band)} · ${esc(titleCase(o.atmosphere))}</span></span>
+      <span class="dots">${dots}</span></li>`;
+  }).join("");
+}
+
+/* ---- wires between the hub and each agent --------------------------------- */
+
+function drawWires() {
+  const stage = $("stage"), svg = $("wires");
+  const box = stage.getBoundingClientRect();
+  svg.setAttribute("viewBox", `0 0 ${stage.scrollWidth} ${stage.scrollHeight}`);
+  const hubR = $("hub").getBoundingClientRect();
+  const hx = hubR.left + hubR.width / 2 - box.left + stage.scrollLeft;
+  const hy = hubR.top + hubR.height / 2 - box.top + stage.scrollTop;
+  svg.innerHTML = Object.keys(PEOPLE).map(p => {
+    const av = $(`av-${p}`);
+    if (!av) return "";
+    const r = av.getBoundingClientRect();
+    const x = r.left + r.width / 2 - box.left + stage.scrollLeft;
+    const y = r.top + r.height / 2 - box.top + stage.scrollTop;
+    const mx = (x + hx) / 2;
+    return `<path class="wire" id="wire-${p}" d="M${hx},${hy} C${mx},${hy} ${mx},${y} ${x},${y}"/>`;
+  }).join("");
+}
+window.addEventListener("resize", drawWires);
+
+function pulse(p, dir) {
+  const w = $(`wire-${p}`);
+  if (!w) return;
+  w.classList.remove("in", "out");
+  w.classList.add(dir);
+  clearTimeout(w._t);
+  w._t = setTimeout(() => w.classList.remove(dir), 1800);
+}
+
+/* ---- plan panel ----------------------------------------------------------- */
+
+function showPlan(v, info) {
+  $("plan-hero").textContent = CUISINE[v.cuisine] || "🍽️";
+  $("plan-venue").textContent = v.name;
+  const tags = [titleCase(v.cuisine), v.price_band, `${titleCase(v.atmosphere)} atmosphere`,
+    ...(v.dietary || []).map(titleCase), titleCase(v.area)];
+  $("plan-tags").innerHTML = tags.map(t => `<span>${esc(t)}</span>`).join("");
+  $("plan-facts").innerHTML = [
+    `🗓️ ${slotText(v.slot)}`,
+    `🔎 Found in round ${info.round}, after ${info.offers_tried} of ${info.search_space} possible offers`,
+    `✅ Works for every guest`,
+    v.new_opening ? "🆕 A place she hasn't been" : null,
+  ].filter(Boolean).map(t => `<li>${esc(t)}</li>`).join("");
+  renderPeople();
+  $("main").classList.add("with-plan");
+  $("plan").hidden = false;
+  requestAnimationFrame(drawWires);
+  setTimeout(drawWires, 550);
+}
+
+function renderPeople() {
+  const rows = Object.keys(PEOPLE).map(p => {
+    const id = nodeOf(p);
+    const isHon = id && id === S.honoree;
+    const guest = id && S.guests.includes(id);
+    const status = isHon ? '<span class="shh">🎁 kept a surprise</span>'
+      : guest ? '<span class="ok">✓ works for me!</span>' : '<span class="more">—</span>';
+    return `<li><span class="av" style="--tint:${PEOPLE[p].tint};--accent:${PEOPLE[p].accent}">${PEOPLE[p].emoji}</span><span>${PEOPLE[p].name}</span>${status}</li>`;
+  });
+  $("plan-people").innerHTML = rows.join("");
+}
+
+function renderLedger(spend) {
+  const rows = Object.entries(spend).map(([id, bits]) => {
+    const p = S.nodes[id];
+    return `<tr><td>${p ? PEOPLE[p].emoji + " " + PEOPLE[p].name : "Node " + id.slice(-4)}</td><td>${bits.toFixed(0)} bits</td></tr>`;
+  });
+  const total = Object.values(spend).reduce((a, b) => a + b, 0);
+  $("plan-ledger").innerHTML = rows.join("") + `<tr class="total"><td>Total</td><td>${total.toFixed(0)} bits</td></tr>`;
+}
+
+$("confirm").onclick = () => {
+  const b = $("confirm");
+  b.classList.add("done");
+  b.textContent = "✓ Plan confirmed! 🎉";
+};
+
+/* ---- event handling -------------------------------------------------------- */
+
+const nodeOf = p => Object.keys(S.nodes).find(id => S.nodes[id] === p);
+const personaOf = id => S.nodes[id];
+const nameOf = id => PEOPLE[personaOf(id)]?.name || `Node …${String(id).slice(-4)}`;
+
+function reset() {
+  S = fresh();
+  $("main").classList.remove("with-plan");
+  $("plan").hidden = true;
+  $("banner").hidden = true;
+  $("confirm").classList.remove("done");
+  $("confirm").textContent = "✨ Confirm Plan ✨";
+  $("offers").innerHTML = '<li class="empty">Starting…</li>';
+  $("board-round").textContent = "Getting everyone together";
+  $("feed").innerHTML = "";
+  for (const p of Object.keys(PEOPLE)) say(p, "Waiting for the planner…");
+  hub("Planner on the SuperLink", false);
+  requestAnimationFrame(drawWires);
+}
+
+const handlers = {
+  hello(e) { profiles = e.profiles || {}; renderPrivate(); },
+
+  session(e) {
+    reset();
+    if (e.profiles) { profiles = e.profiles; renderPrivate(); }
+    setStatus(e.run_id === "demo" ? "Demo replay (dryrun.py)" : `Live · run ${e.run_id}`, true);
+  },
+
+  start(e) {
+    for (const n of e.nodes) if (n.persona) S.nodes[n.id] = n.persona;
+    S.honoree = e.honoree;
+    S.guests = e.guests;
+    const hon = e.honoree && personaOf(e.honoree);
+    const honName = hon ? PEOPLE[hon].name : "our friend";
+    $("board-title").textContent = `${honName}'s Birthday Dinner`;
+    for (const p of Object.keys(PEOPLE)) {
+      const id = nodeOf(p);
+      if (!id) { say(p, "Not connected", "No SuperNode for this person"); continue; }
+      const isHon = id === e.honoree;
+      $(`agent-${p}`).classList.toggle("honoree", isHon);
+      $(`role-${p}`).textContent = isHon ? "Birthday girl · SuperNode" : "Guest · SuperNode";
+      say(p, `Hi! I'm ${PEOPLE[p].name}'s agent 👋`, "Everything I know stays on this laptop");
+    }
+    hub(`“${e.prompt.slice(0, 70)}${e.prompt.length > 70 ? "…" : ""}”`);
+    feed(`Planner found ${e.nodes.length} agents in the federation`);
+  },
+
+  ask(e) {
+    for (const id of e.nodes) {
+      const p = personaOf(id);
+      if (p) pulse(p, "out");
+    }
+    if (e.phase === "wishes") {
+      const p = personaOf(e.nodes[0]);
+      if (p) say(p, `Thinking about what I'd love${typing}`);
+      hub("Asking the birthday girl for her wishes");
+      feed(`Asked ${nameOf(e.nodes[0])} for her wishes (only her taste, nothing else)`);
+    } else if (e.phase === "veto") {
+      for (const id of e.nodes) {
+        const p = personaOf(id);
+        if (p) say(p, `Checking ${S.offers.length} offers against my private calendar, budget &amp; diet${typing}`);
+      }
+      const hon = S.honoree && personaOf(S.honoree);
+      if (hon) say(hon, "🙈 Not peeking, it's a surprise!", "I never see the shortlist");
+      hub(`Asking ${e.nodes.length} guests about ${S.offers.length} offers`);
+    } else if (e.phase === "plan") {
+      for (const id of e.nodes) { const p = personaOf(id); if (p) say(p, `Got the booking${typing}`); }
+      hub("Telling the guests (not Sofia!)");
+    }
+  },
+
+  reply(e) {
+    const p = personaOf(e.node);
+    if (p) pulse(p, "in");
+    if (e.status !== "ok") {
+      if (p) say(p, `⚠️ Couldn't answer (${e.status})`, "The planner gets no reply, so no information");
+      feed(`${nameOf(e.node)}: no valid answer (${e.status})`);
+      return;
+    }
+    S.bits[e.node] = (S.bits[e.node] || 0) + (e.bits || 0);
+    if (e.phase === "wishes") {
+      const f = e.fields;
+      const bits = [f.atmosphere && `something ${f.atmosphere}`, f.cuisine_pref && `${f.cuisine_pref} food`, f.prefers_new_place && "somewhere new"].filter(Boolean);
+      if (p) say(p, `I'd love ${esc(bits.join(", "))} please 💝`, `Shared ${e.bits} bits: just my taste`);
+      feed(`${nameOf(e.node)} shared her wishes`);
+    } else if (e.phase === "veto") {
+      const v = e.fields.verdicts;
+      S.verdicts[e.node] = v;
+      const yes = v.filter(Boolean).length;
+      const chips = v.map((ok, i) => `<span class="chip ${ok ? "yes" : ""}">${i + 1} ${ok ? "✓" : "✗"}</span>`).join("");
+      if (p) say(p, `${yes ? `✓ ${yes} of ${v.length} work for me` : "✗ None of these work for me"}<div class="chips">${chips}</div>`, "Reasons stay on my laptop 🔒");
+      feed(`${nameOf(e.node)} answered: ${yes} of ${v.length} work`);
+    } else if (e.phase === "plan") {
+      if (p) say(p, "Noted! See you there 🥂", "Sent 1 bit: acknowledged");
+    }
+  },
+
+  round(e) {
+    S.round = e.round;
+    S.offers = e.offers;
+    renderBoard();
+    feed(`Round ${e.round}: planner proposed ${e.offers.length} concrete offers`);
+    hub(`Round ${e.round}: sending offers`);
+  },
+
+  tally(e) {
+    const top = e.tallies.indexOf(Math.max(...e.tallies));
+    const winner = e.tallies[top] === e.voters ? top : undefined;
+    renderBoard(e.tallies, e.voters, winner);
+    feed(winner === undefined
+      ? `Round ${e.round}: no offer works for everyone yet, trying again`
+      : `Round ${e.round}: offer ${winner + 1} works for all ${e.voters} guests!`);
+  },
+
+  consensus(e) {
+    hub("Everyone said yes! 🎉", false);
+    feed(`Consensus: ${e.venue.name}, ${slotText(e.venue.slot)}`);
+    showPlan(e.venue, e);
+  },
+
+  done(e) {
+    renderLedger(e.spend);
+    if (!e.venue) {
+      hub("No consensus this time", false);
+      $("banner").hidden = false;
+      $("banner").textContent = "No offer worked for everyone within the round limit, so there's no plan to show.";
+      feed("Finished without a plan everyone accepts");
+    } else {
+      renderPeople();
+    }
+  },
+
+  stream_closed() { setStatus("Run finished · waiting for the next prompt", false); },
+};
+
+function connect() {
+  const es = new EventSource("/events");
+  es.onopen = () => { if (!S.round && !S.guests.length) setStatus("Waiting for a prompt in flwr chat", false); };
+  es.onmessage = m => {
+    const e = JSON.parse(m.data);
+    (handlers[e.kind] || (() => {}))(e);
+  };
+  es.onerror = () => setStatus("Console server not reachable, retrying…", false);
+}
+
+$("replay").onclick = () => fetch("/demo");
+buildStations();
+connect();
+</script>
+</body>
+</html>
