@@ -43,8 +43,14 @@ def stream_turn(
     input_items: list[Any],
     tools: list[dict[str, Any]],
     instructions: str,
+    *,
+    show: bool = True,
 ) -> tuple[Any, dict[str, Any]]:
-    """Stream one model turn and return its completed response and event."""
+    """Stream one model turn and return its completed response and event.
+
+    With `show`, text deltas are forwarded to whoever is watching the run
+    (the organiser's `flwr chat`, at the SuperLink).
+    """
     completed_response = None
     completed_event = None
     stream = openai_client.responses.create(
@@ -56,7 +62,7 @@ def stream_turn(
         stream=True,
     )
     for event in stream:
-        if event.type in STREAM_EVENT_TYPES:
+        if show and event.type in STREAM_EVENT_TYPES:
             agent.events.emit(event.to_dict())
         elif event.type == "response.completed":
             completed_response = event.response
@@ -72,8 +78,8 @@ def run_tool_loop(
     grid: Any,
     prompt: str,
     instructions: str,
-) -> None:
-    """Drive the model until it stops calling tools."""
+) -> str:
+    """Drive the model until it stops calling tools; return its final text."""
     openai_client = client()
     input_items: list[Any] = [{"type": "message", "role": "user", "content": prompt}]
     tools = grid.tools()
@@ -87,7 +93,7 @@ def run_tool_loop(
         input_items.extend(output)
         if not calls:
             agent.events.emit(completed_event)
-            return
+            return output_text(output)
         input_items.extend(grid.call(item) for item in calls)
     raise RuntimeError(f"Agent exceeded {MAX_TOOL_ROUNDS} tool rounds")
 
@@ -109,19 +115,25 @@ def ask_json(
             [{"type": "message", "role": "user", "content": prompt}],
             [],
             instructions,
+            show=False,
         )
-        text = "".join(
-            part.get("text", "")
-            for item in (i.to_dict() for i in response.output)
-            if item.get("type") == "message"
-            for part in item.get("content", [])
-        )
+        text = output_text([i.to_dict() for i in response.output])
         start, end = text.find("{"), text.rfind("}")
         if start == -1 or end == -1:
             return fallback
         return json.loads(text[start : end + 1])
     except Exception:  # pylint: disable=broad-exception-caught
         return fallback
+
+
+def output_text(output: list[dict[str, Any]]) -> str:
+    """The plain text of a model turn's message items."""
+    return "".join(
+        part.get("text", "")
+        for item in output
+        if item.get("type") == "message"
+        for part in item.get("content", [])
+    )
 
 
 def call_id() -> str:

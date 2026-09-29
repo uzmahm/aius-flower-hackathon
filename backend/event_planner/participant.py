@@ -16,7 +16,7 @@ from typing import Any
 from flwr.agentapp import AgentSession
 from flwr.app import Context
 
-from event_planner import llm, policy, profiles
+from event_planner import llm, policy, profiles, rules
 from event_planner.guard import PolicyGrid
 
 INSTRUCTIONS = (
@@ -34,7 +34,9 @@ INSTRUCTIONS = (
     "Never state the reason for any answer, and never quote, paraphrase or "
     "hint at anything from the profile: not a calendar entry, not an amount "
     "or a price band, not an address, not a medical, dietary or mobility "
-    "detail. A bare true or false is the whole answer. Reply with JSON only."
+    "detail. A bare true or false is the whole answer. Do not answer in "
+    "text: only the push_reply_message call counts, and its payload is JSON "
+    "only."
 )
 
 
@@ -45,20 +47,16 @@ def _request(prompt: str) -> dict[str, Any]:
     return json.loads(payload) if isinstance(payload, str) else payload
 
 
-def _fallback(phase: str, request: dict[str, Any], user: str) -> dict[str, Any]:
-    """The minimum-information answer, sent if no compliant reply appears.
-
-    Never "helpfully" widened. Refusing everything is the conservative default
-    for a veto round: it can cost the group an option, but it cannot leak a
-    preference.
-    """
-    if phase == "veto":
-        return {"verdicts": [False] * len(request["candidates"])}
-    if phase == "identity":
-        return {"user": user, "role": profiles.role_of(user)}
-    if phase == "wishes":
-        return {"activity_prefs": [], "atmosphere": "casual", "prefers_new_place": False}
-    return {"acknowledged": True}
+def _json_in(text: str) -> dict[str, Any] | None:
+    """The JSON object in a model's text answer, if there is one."""
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1:
+        return None
+    try:
+        value = json.loads(text[start : end + 1])
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def _send(grid: PolicyGrid, payload: dict[str, Any]) -> None:
@@ -86,7 +84,10 @@ def run(agent: AgentSession, context: Context) -> None:
     request = _request(agent.prompt)
     phase = request["phase"]
     schema = _schema_for(request)
-    fallback = _fallback(phase, request, user)
+    # Decided by plain rules on this node, from this node's profile. Sent when
+    # the model is unavailable or will not produce a compliant reply; it is
+    # held to the same schema, so it discloses no more than the model could.
+    fallback = rules.answer(user, request)
 
     grid = PolicyGrid(
         agent.grid,
@@ -116,9 +117,18 @@ def run(agent: AgentSession, context: Context) -> None:
             },
             indent=2,
         )
-        llm.run_tool_loop(agent, grid, prompt, INSTRUCTIONS)
-        # The model can finish without ever calling the reply tool, and the
-        # leader is blocked waiting for exactly one message from this node.
+        try:
+            text = llm.run_tool_loop(agent, grid, prompt, INSTRUCTIONS)
+        except Exception as err:  # pylint: disable=broad-exception-caught
+            # Typically no FLWR_MODEL_API_KEY on this laptop.
+            print(f"[{user}] model unavailable, deciding by local rules: {err}")
+            text = ""
+        # The model can finish without calling the reply tool, often by
+        # writing the JSON as text. The leader is blocked waiting for exactly
+        # one message from this node, so send that text through the guard, or
+        # failing that the rule-based answer.
+        if grid.disclosed is None and (answer := _json_in(text)) is not None:
+            _send(grid, answer)
         if grid.disclosed is None:
             _send(grid, fallback)
 
