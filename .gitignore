@@ -1,5 +1,28 @@
-.venv/
-*.fab
+# python
 __pycache__/
-.DS_Store
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# environments and secrets
+.venv/
+venv/
+env/
 .env
+.env.*
+
+# flower build output
+*.fab
+
+# run artefacts
+logs/
+frontend/report/trace.json
+frontend/report/report.html
+
+.DS_Store
