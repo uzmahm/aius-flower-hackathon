@@ -24,10 +24,15 @@ if [[ -z "${FLWR_MODEL_API_KEY:-}" ]]; then
   exit 1
 fi
 
-# The address friends will point their SuperNode at.
-LAN_IP="${LEADER_IP:-$(ipconfig getifaddr en0 2>/dev/null \
+# The address friends will point their SuperNode at. Every lookup may fail
+# (wrong interface, Linux-only flag), and under `set -e` a failed command
+# substitution would kill the script without a word, hence the `|| true`.
+DEFAULT_IF="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}' || true)"
+LAN_IP="${LEADER_IP:-$( { [[ -n "$DEFAULT_IF" ]] && ipconfig getifaddr "$DEFAULT_IF"; } 2>/dev/null \
+  || ipconfig getifaddr en0 2>/dev/null \
   || ipconfig getifaddr en1 2>/dev/null \
-  || hostname -I 2>/dev/null | awk '{print $1}')}"
+  || { hostname -I 2>/dev/null | awk '{print $1}'; } \
+  || true)}"
 if [[ -z "$LAN_IP" ]]; then
   echo "Could not work out this laptop's network address." >&2
   echo "Find it in System Settings -> Network, then: LEADER_IP=1.2.3.4 $0" >&2
