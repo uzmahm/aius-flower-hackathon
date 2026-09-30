@@ -12,8 +12,9 @@ counted in bits.
 Built on [Flower](https://flower.ai) · made by ✦ aius
 
 [![Secret Garden: three laptops agree on a dinner and each gives away one bit](docs/media/demo.gif)](docs/media/demo.mp4)
+[![Creating a profile and joining from another laptop](docs/media/new_profile.gif)](docs/media/secret_garden_new_profile_demo.mov)
 
-<sub>▶ Click for the full demo video (4½ min). The GIF is the last 30 seconds at 2× speed.</sub>
+<sub>▶ Top: a full run — click for the 4½ min video. Bottom: creating a user profile with preferences.</sub>
 
 </div>
 
