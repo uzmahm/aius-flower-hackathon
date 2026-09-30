@@ -51,7 +51,10 @@ echo "Starting the leader on $LAN_IP ..."
 uv run flower-superlink --insecure > "$ROOT/logs/superlink.log" 2>&1 &
 sleep 8
 
-if [[ "${1:-}" != "--solo" ]]; then
+SOLO=""
+[[ "${1:-}" == "--solo" ]] && SOLO=1
+
+if [[ -z "$SOLO" ]]; then
   port=9101
   for path in event_planner/users/*.json; do
     user="$(basename "$path" .json)"
@@ -65,7 +68,8 @@ if [[ "${1:-}" != "--solo" ]]; then
 fi
 
 sleep 5
-uv run python "$ROOT/frontend/server.py" --superlink local-agent \
+# In solo mode this laptop has no agents, so the console hides its profiles.
+uv run python "$ROOT/frontend/server.py" --superlink local-agent ${SOLO:+--no-local} \
   > "$ROOT/logs/console.log" 2>&1 &
 
 cat <<EOF
