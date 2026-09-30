@@ -26,3 +26,6 @@ frontend/report/trace.json
 frontend/report/report.html
 
 .DS_Store
+
+# raw screen recordings (too big for GitHub; trimmed copies live in docs/media/)
+*.mov
