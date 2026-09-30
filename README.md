@@ -11,6 +11,12 @@ counted in bits.
 
 Built on [Flower](https://flower.ai) · made by ✦ aius
 
+### 🏆 1st Place — Collaborative Agent Hackathon @ Stanford
+
+Secret Garden won **1st Place at the Collaborative Agent Hackathon @ Stanford**, hosted by **Flower Labs** and supported by Nebius.
+
+Built by **Alexa Lowe, Ieva Bagdonaviciute, Uzma Hamid, and Sonia Fareidooni**.
+
 [![Secret Garden: three laptops agree on a dinner and each gives away one bit](docs/media/demo.gif)](docs/media/demo.mp4)
 [![Creating a profile and joining from another laptop](docs/media/new_profile.gif)](docs/media/new_profile.mp4)
 
