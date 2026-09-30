@@ -68,14 +68,38 @@ if [[ -z "$SOLO" ]]; then
 fi
 
 sleep 5
+# A console left over from an earlier session would hold the default port and
+# the new one would die on bind, so take the first port that is actually free.
+UI_PORT=8765
+while lsof -iTCP:"$UI_PORT" -sTCP:LISTEN -n >/dev/null 2>&1; do
+  echo "  port $UI_PORT is already in use (an older console?), trying $((UI_PORT + 1))"
+  UI_PORT=$((UI_PORT + 1))
+done
+
 # In solo mode this laptop has no agents, so the console hides its profiles.
-uv run python "$ROOT/frontend/server.py" --superlink local-agent ${SOLO:+--no-local} \
+uv run python "$ROOT/frontend/server.py" --superlink local-agent \
+  --port "$UI_PORT" ${SOLO:+--no-local} \
   > "$ROOT/logs/console.log" 2>&1 &
+
+# Never announce a console that is not there. Silent death in a log file is
+# how you end up staring at a stale window from a previous run.
+CONSOLE_URL="http://127.0.0.1:$UI_PORT/"
+for _ in $(seq 20); do
+  curl -sf -o /dev/null --max-time 1 "$CONSOLE_URL" && break
+  sleep 0.5
+done
+if ! curl -sf -o /dev/null --max-time 2 "$CONSOLE_URL"; then
+  echo
+  echo "!! The console failed to start. Everything else is running." >&2
+  echo "!! Why: $(tail -1 "$ROOT/logs/console.log")" >&2
+  echo "!! Full log: logs/console.log" >&2
+  CONSOLE_URL="(not running -- see logs/console.log)"
+fi
 
 cat <<EOF
 
 ────────────────────────────────────────────────────────────────────
-Leader running. Console: http://127.0.0.1:8765/
+Leader running. Console: $CONSOLE_URL
 
 Send this to anyone who wants to join, on their own laptop:
 

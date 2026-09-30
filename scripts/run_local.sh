@@ -57,11 +57,29 @@ done
 
 # Live console: opens a window when a prompt starts a run.
 sleep 5
-uv run python "$ROOT/frontend/server.py" --superlink local-agent \
+# A console left over from an earlier session would hold the default port and
+# the new one would die on bind, so take the first port that is actually free.
+UI_PORT=8765
+while lsof -iTCP:"$UI_PORT" -sTCP:LISTEN -n >/dev/null 2>&1; do
+  echo "  port $UI_PORT is already in use (an older console?), trying $((UI_PORT + 1))"
+  UI_PORT=$((UI_PORT + 1))
+done
+uv run python "$ROOT/frontend/server.py" --superlink local-agent --port "$UI_PORT" \
   > "$ROOT/logs/console.log" 2>&1 &
 
+# Never announce a console that is not there.
+CONSOLE_URL="http://127.0.0.1:$UI_PORT/"
+for _ in $(seq 20); do
+  curl -sf -o /dev/null --max-time 1 "$CONSOLE_URL" && break
+  sleep 0.5
+done
+if ! curl -sf -o /dev/null --max-time 2 "$CONSOLE_URL"; then
+  echo "!! The console failed to start: $(tail -1 "$ROOT/logs/console.log")" >&2
+  CONSOLE_URL="(not running -- see logs/console.log)"
+fi
+
 echo
-echo "Running. Logs in logs/. Console at http://127.0.0.1:8765/"
+echo "Running. Logs in logs/. Console at $CONSOLE_URL"
 echo "Now open another terminal:  cd backend && FLWR_CHAT_SUPERLINK=local-agent uv run flwr chat"
 echo "Ctrl+C to stop everything."
 wait
