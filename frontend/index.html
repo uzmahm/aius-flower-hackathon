@@ -3,25 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Event Planner</title>
+<title>Secret Garden · aius</title>
+<link rel="icon" href="assets/brand/flower-mark.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&display=swap">
+<!-- Pixel art: "Ninja Adventure" by pixel-boy, CC0. Flower logo: Flower Labs,
+     shown because this runs on Flower. See frontend/assets/README.md. -->
 <style>
   :root {
     --pink-50: #fff5f9;
     --pink-100: #fde7f0;
-    --pink-200: #f9cfe0;
     --pink-300: #f5a9c6;
     --pink-500: #e0679a;
     --pink-700: #a8356a;
-    --ink: #4a2a3d;
-    --ink-soft: #85607a;
+    --ink: #3b2433;
+    --ink-soft: #7d5a6f;
     --line: #efc3d6;
     --ok: #3f9a6b;
     --no: #c9587a;
-    --card: #ffffffee;
+    --outline: #141b1b;
+    --paper: #f2eaf1;
     --pixel: "Pixelify Sans", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
     --body: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+    /* the pack's dialog frame, as a nine-slice; its centre is shaded, so the
+       inside is filled with flat paper instead of stretching it */
+    --frame: url(assets/hud/bubble.png) 6 / 12px stretch;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -33,11 +39,12 @@
     background: #f4c6d8;
     padding: 12px;
   }
+  img, .sprite, .emote, .px { image-rendering: pixelated; }
 
   /* ---- window chrome ---------------------------------------------------- */
   .window {
     height: calc(100vh - 24px);
-    min-height: 640px;
+    min-height: 680px;
     display: flex;
     flex-direction: column;
     border: 3px solid var(--pink-500);
@@ -50,16 +57,32 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 16px;
+    padding: 8px 14px;
     background: linear-gradient(#fbd6e5, #f7bcd3);
     border-bottom: 3px solid var(--pink-500);
   }
-  .titlebar h1 {
-    margin: 0;
-    font: 700 22px var(--pixel);
-    letter-spacing: .5px;
+  .titlebar h1 { margin: 0; font: 700 22px var(--pixel); letter-spacing: .5px; }
+  /* team identity: a pixel badge, then the project name */
+  .team {
+    font: 700 17px var(--pixel);
+    letter-spacing: 1px;
+    color: #fff;
+    background: var(--pink-700);
+    border: 3px solid var(--outline);
+    box-shadow: inset -3px -3px 0 #0003, 0 3px 0 #141b1b44;
+    padding: 0 9px 1px;
   }
-  .titlebar .cat { font-size: 24px; }
+  .team::before { content: "✦ "; color: #ffd9b0; }
+  .powered {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  .powered img { width: 24px; height: auto; image-rendering: auto; }
+  .powered b { font: 700 15px var(--pixel); color: var(--ink); }
+  .brand-mark { image-rendering: auto; }
   .status {
     margin-left: auto;
     display: flex;
@@ -73,18 +96,30 @@
     color: var(--ink-soft);
   }
   .status .dot { width: 9px; height: 9px; border-radius: 50%; background: #c9a7b8; }
-  .status.live .dot { background: #3fbf7f; box-shadow: 0 0 0 0 #3fbf7f88; animation: ping 1.6s infinite; }
-  @keyframes ping { 70% { box-shadow: 0 0 0 8px #3fbf7f00; } 100% { box-shadow: 0 0 0 0 #3fbf7f00; } }
+  .status.live .dot { background: #3fbf7f; animation: ping 1.6s infinite; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 #3fbf7f88; } 70%, 100% { box-shadow: 0 0 0 8px #3fbf7f00; } }
   .btn {
-    font: 600 13px var(--body);
-    color: var(--pink-700);
-    background: #fff;
-    border: 2px solid var(--pink-300);
-    border-radius: 10px;
-    padding: 5px 12px;
+    font: 700 14px var(--pixel);
+    color: var(--ink);
+    background: #ffad5d;
+    border: 3px solid var(--outline);
+    border-radius: 6px;
+    box-shadow: inset 0 -3px 0 #d3865f, 0 3px 0 #96534066;
+    padding: 4px 12px;
     cursor: pointer;
   }
-  .btn:hover { background: var(--pink-100); }
+  .btn:active { transform: translateY(2px); box-shadow: inset 0 -1px 0 #d3865f; }
+  .winbtns { display: flex; gap: 6px; }
+  .winbtns i {
+    width: 30px; height: 26px;
+    display: grid; place-items: center;
+    font: 700 14px var(--body); font-style: normal;
+    color: #fff;
+    border-radius: 7px;
+    background: linear-gradient(#8fb6f0, #5f8fdc);
+    border: 2px solid #4a73b8;
+  }
+  .winbtns i.x { background: linear-gradient(#f59a9a, #e05f6f); border-color: #b8404f; }
 
   /* ---- layout ----------------------------------------------------------- */
   .main {
@@ -99,17 +134,48 @@
   .stage {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(250px, 1fr) minmax(300px, 1.1fr) minmax(250px, 1fr);
-    gap: 18px;
-    padding: 20px;
+    grid-template-columns: minmax(270px, 1fr) minmax(400px, 1.25fr) minmax(270px, 1fr);
+    gap: 16px;
+    padding: 18px;
     overflow: auto;
-    background:
-      radial-gradient(ellipse 42% 30% at 50% 62%, #f8c9dc 0 60%, transparent 61%),
-      radial-gradient(ellipse 48% 35% at 50% 62%, #fbdbe8 0 70%, transparent 71%),
-      linear-gradient(#fdeef4 0 58%, #f9dbe7 58% 100%);
+    /* wooden floor, 16px tiles drawn at 3x */
+    background: url(assets/room/floor.png) 0 0 / 48px 48px;
   }
-  .col { display: flex; flex-direction: column; justify-content: space-between; gap: 18px; z-index: 1; }
-  .center { justify-content: flex-start; align-items: stretch; }
+  .col { display: flex; flex-direction: column; justify-content: space-around; gap: 16px; z-index: 1; }
+  .center { justify-content: flex-start; align-items: stretch; gap: 10px; }
+
+  /* ---- the room: decoration only, behind everything ---------------------- */
+  .room { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .room .wall {
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 200px;
+    background: url(assets/room/wall.png) 0 0 / 48px 48px;
+    border-bottom: 6px solid #c98a5e;
+    box-shadow: 0 6px 0 #0001;
+  }
+  .room .pane {
+    position: absolute;
+    top: 26px;
+    width: 22%;
+    height: 118px;
+    border: 8px solid #a7684a;
+    outline: 3px solid var(--outline);
+    box-shadow: inset 0 0 0 3px #ffd9b0;
+    overflow: hidden;
+  }
+  .room .pane::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(90deg, transparent calc(50% - 3px), #a7684a calc(50% - 3px) calc(50% + 3px), transparent 0),
+      linear-gradient(transparent calc(50% - 3px), #a7684a calc(50% - 3px) calc(50% + 3px), transparent 0);
+  }
+  .room .pane.l { left: 7%; }
+  .room .pane.r { right: 7%; }
+  .room .sky { width: 100%; height: 100%; display: block; }
+  .room .prop { position: absolute; }
 
   svg.wires {
     position: absolute;
@@ -119,74 +185,61 @@
     pointer-events: none;
     z-index: 0;
   }
-  .wire { fill: none; stroke: #e7b3c9; stroke-width: 3; stroke-dasharray: 2 8; stroke-linecap: round; }
+  .wire { fill: none; stroke: #fff8; stroke-width: 3; stroke-dasharray: 2 8; stroke-linecap: round; }
   .wire.out { stroke: var(--pink-500); animation: flow-out .6s linear infinite; }
-  .wire.in { stroke: #6f9fe0; animation: flow-in .6s linear infinite; }
+  .wire.in { stroke: #4f8fe0; animation: flow-in .6s linear infinite; }
   @keyframes flow-out { to { stroke-dashoffset: -20; } }
   @keyframes flow-in { to { stroke-dashoffset: 20; } }
 
-  /* ---- agents ----------------------------------------------------------- */
-  .agent { display: flex; flex-direction: column; gap: 10px; max-width: 340px; }
-  .col.right .agent { align-self: flex-end; align-items: flex-end; }
-  .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 14px 6px 6px;
-    border-radius: 14px;
-    background: var(--card);
-    border: 2px solid var(--line);
-    width: fit-content;
-  }
-  .av {
-    width: 44px; height: 44px;
-    display: grid; place-items: center;
-    font-size: 24px;
-    border-radius: 12px;
-    background: var(--tint, var(--pink-100));
-    border: 2px solid var(--accent, var(--pink-300));
-  }
-  .tag b { font: 700 17px var(--pixel); }
-  .tag small { display: block; font-size: 11px; color: var(--ink-soft); }
-  .agent.honoree .tag { border-color: var(--pink-500); }
+  /* ---- a framed panel, RPG style ----------------------------------------- */
+  .frame { border: 12px solid transparent; border-image: var(--frame); background: var(--paper) padding-box; }
+  .frame h4, .frame h2 { font-family: var(--pixel); }
 
+  /* ---- agent dialog windows (side columns) ------------------------------ */
+  .agent { display: flex; flex-direction: column; gap: 8px; max-width: 380px; width: 100%; }
+  .col.right .agent { align-self: flex-end; }
+  .dialog {
+    display: grid;
+    grid-template-columns: 84px 1fr;
+    gap: 10px;
+    align-items: start;
+    padding: 0;
+  }
+  .portrait {
+    width: 84px; height: 84px;
+    display: grid; place-items: center;
+    background: url(assets/hud/facebox.png) 0 0 / 84px 84px;
+  }
+  .portrait img { width: 66px; height: 66px; }
+  .who b { font: 700 19px var(--pixel); }
+  .who small { display: block; font-size: 11px; color: var(--ink-soft); }
+  .agent.honoree .who b::after { content: " 🎂"; font-size: 15px; }
+  .agent.offline .dialog { filter: grayscale(.7); opacity: .7; }
   .bubble {
-    position: relative;
-    padding: 10px 14px;
-    border-radius: 16px;
-    background: #fff;
-    border: 2px solid var(--line);
-    box-shadow: 0 3px 0 #f1cddc;
-    min-height: 44px;
-    max-width: 300px;
-    transition: transform .25s ease;
+    margin-top: 4px;
+    font: 500 15px/1.3 var(--pixel);
+    min-height: 40px;
   }
   .bubble.pop { animation: pop .35s ease; }
-  @keyframes pop { 0% { transform: scale(.92); } 60% { transform: scale(1.03); } 100% { transform: scale(1); } }
-  .bubble .sub { display: block; margin-top: 4px; font-size: 11.5px; color: var(--ink-soft); }
+  @keyframes pop { 0% { transform: scale(.94); } 60% { transform: scale(1.03); } 100% { transform: scale(1); } }
+  .bubble .sub { display: block; margin-top: 3px; font: 11.5px var(--body); color: var(--ink-soft); }
   .typing { display: inline-flex; gap: 4px; vertical-align: middle; margin-left: 6px; }
-  .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--pink-300); animation: blink 1s infinite; }
+  .typing i { width: 5px; height: 5px; background: var(--ink); animation: blink 1s steps(2) infinite; }
   .typing i:nth-child(2) { animation-delay: .15s; }
   .typing i:nth-child(3) { animation-delay: .3s; }
-  @keyframes blink { 50% { opacity: .25; transform: translateY(-2px); } }
+  @keyframes blink { 50% { opacity: .2; } }
   .chips { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
-  .chip {
-    font: 700 11px var(--body);
-    padding: 2px 7px;
-    border-radius: 7px;
-    background: #fbe1ea;
-    color: var(--no);
-  }
-  .chip.yes { background: #dcf3e6; color: var(--ok); }
+  .chip { display: inline-flex; align-items: center; gap: 2px; font: 700 12px var(--pixel); }
+  .chip img { width: 39px; height: 24px; }
 
   .private {
-    background: #fffaf6ee;
-    border: 2px dashed #e8b7c9;
-    border-radius: 12px;
+    background: #fff8ef;
+    border: 3px solid var(--outline);
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 3px #ffd9b0, 0 4px 0 #141b1b33;
     padding: 8px 12px;
     font-size: 12.5px;
     width: 100%;
-    max-width: 300px;
   }
   .private h4 { margin: 0 0 4px; font: 700 13px var(--pixel); color: var(--pink-700); }
   .private ul { list-style: none; margin: 0; padding: 0; }
@@ -194,14 +247,11 @@
   .private li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .private .more { color: var(--ink-soft); }
 
-  /* ---- center: board, hub, feed ----------------------------------------- */
-  .board {
-    background: #fffdf8;
-    border: 6px solid #b98a73;
-    border-radius: 10px;
-    padding: 12px 14px;
-    box-shadow: 0 5px 0 #9c6f59;
-  }
+  .presence { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-soft); }
+  .pip { width: 8px; height: 8px; background: #c9a7b8; flex: none; }
+  .pip.on { background: #3fbf7f; }
+
+  /* ---- center: board ----------------------------------------------------- */
   .board h2 { margin: 0; text-align: center; font: 700 24px var(--pixel); color: var(--pink-700); }
   .board .round { text-align: center; color: var(--ink-soft); font-size: 12px; margin: 2px 0 8px; }
   .offers { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
@@ -211,167 +261,244 @@
     align-items: center;
     gap: 8px;
     padding: 5px 8px;
-    border-radius: 8px;
-    background: var(--pink-50);
+    background: #fff9;
     border: 2px solid transparent;
     font-size: 12.5px;
   }
-  .offer .n { font: 700 13px var(--pixel); color: var(--pink-700); }
+  .offer .n { font: 700 15px var(--pixel); color: var(--pink-700); }
   .offer .meta { color: var(--ink-soft); font-size: 11.5px; }
-  .dots { display: flex; gap: 3px; }
-  .dots i { width: 10px; height: 10px; border-radius: 3px; background: #ecd3de; }
-  .dots i.y { background: var(--ok); }
+  .dots { display: flex; gap: 2px; }
+  .dots i { width: 16px; height: 16px; background: url(assets/hud/heart.png) -64px 0 / 80px 16px; image-rendering: pixelated; }
+  .dots i.y { background-position: 0 0; }
   .offer.win { border-color: var(--ok); background: #e7f6ee; }
-  .offer.dim { opacity: .55; }
-  .empty { text-align: center; color: var(--ink-soft); padding: 14px 4px; }
+  .offer.dim { opacity: .5; }
+  .empty { text-align: center; color: var(--ink-soft); padding: 12px 4px; }
 
-  .hub {
-    align-self: center;
-    margin-top: 18px;
-    width: 190px;
+  /* ---- center: the table everyone sits around ---------------------------- */
+  .hub { position: relative; }
+  .scene { position: relative; height: 322px; }
+  .scene .rug {
+    position: absolute;
+    left: 50%; top: 42px;
+    width: 216px; height: 216px;
+    transform: translateX(-50%);
+  }
+  .scene .table {
+    position: absolute;
+    left: 50%; top: 146px;
+    width: 192px; height: 64px;
+    transform: translateX(-50%);
+    filter: drop-shadow(0 6px 0 #0003);
+    z-index: 2;
+  }
+  /* Flower's own mark, redrawn on the 16px grid (19x32) and drawn at 3x,
+     standing on the right-hand end of the table beside the leader */
+  .scene .centrepiece {
+    position: absolute;
+    left: calc(50% + 40px); top: 64px;
+    width: 57px; height: 96px;
+    z-index: 3;
+    filter: drop-shadow(0 4px 0 #0003);
+    transform-origin: 50% 100%;
+    animation: sway 3s ease-in-out infinite;
+  }
+  @keyframes sway { 50% { transform: rotate(-4deg); } }
+  .hub.busy .centrepiece { animation-duration: .8s; }
+
+  /* A character: 16px sprites drawn at 4x. Sheets hold four directions
+     side by side (down, up, left, right); the walk sheet stacks 4 frames. */
+  .sprite {
+    position: absolute;
+    width: 64px; height: 64px;
+    background-image: var(--idle);
+    background-size: 256px 64px;
+    background-position: calc(var(--dir, 0) * -64px) 0;
+    background-repeat: no-repeat;
+    filter: drop-shadow(0 4px 0 #0003);
+    z-index: 2;
+    transition: opacity .3s;
+  }
+  .sprite.busy { background-image: var(--walk); background-size: 256px 256px; animation: walk .6s steps(4) infinite; }
+  @keyframes walk { from { background-position-y: 0; } to { background-position-y: -256px; } }
+  .sprite.hop { animation: hop .45s ease 4; }
+  @keyframes hop { 50% { transform: translateY(-16px); } }
+  .sprite.away { opacity: .3; }
+  .sprite.leader { left: calc(50% - 32px); top: 96px; z-index: 1; }
+  .sprite .tagname {
+    position: absolute;
+    left: 50%; top: 64px;
+    transform: translateX(-50%);
+    font: 700 12px var(--pixel);
+    color: #fff;
+    text-shadow: 0 2px 0 var(--outline), 2px 0 0 var(--outline), -2px 0 0 var(--outline), 0 -2px 0 var(--outline);
+    white-space: nowrap;
+  }
+  .emote {
+    position: absolute;
+    left: 8px; top: -44px;
+    width: 48px; height: 48px;
+    display: none;
+  }
+  .emote.think { display: block; background: url(assets/hud/think.png) 0 0 / 240px 48px; animation: think 1.2s steps(5) infinite; }
+  @keyframes think { to { background-position-x: -240px; } }
+  .emote.yes, .emote.no { display: block; background: url(assets/hud/heart.png) 0 0 / 240px 48px; animation: bob 1s ease-in-out infinite; }
+  .emote.no { background-position-x: -192px; }
+  .emote.shh { display: block; background: none; font-size: 30px; text-align: center; }
+  .emote.shh::before { content: "🙈"; }
+  @keyframes bob { 50% { transform: translateY(-4px); } }
+
+  .nameplate {
+    margin: 0 auto;
+    width: fit-content;
+    max-width: 100%;
     text-align: center;
-    padding: 14px 12px 12px;
-    border-radius: 50% 50% 22px 22px / 40% 40% 22px 22px;
-    background: radial-gradient(circle at 50% 30%, #fff 0 45%, #fde3ee 70%);
-    border: 3px solid var(--pink-300);
-    box-shadow: 0 5px 0 #eab0c8;
+    padding: 2px 10px;
+    position: relative;
+    z-index: 4;
   }
-  .hub .flower { font-size: 42px; line-height: 1; display: inline-block; }
-  .hub.busy .flower { animation: spin 4s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .hub b { display: block; font: 700 20px var(--pixel); }
-  .hub small { display: block; font-size: 12px; color: var(--ink-soft); min-height: 32px; }
-
-  .feed {
-    margin-top: auto;
-    background: var(--card);
-    border: 2px solid var(--line);
-    border-radius: 12px;
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-  .feed h4 { margin: 0 0 4px; font: 700 13px var(--pixel); color: var(--pink-700); }
-  .feed ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; max-height: 110px; overflow: auto; }
-  .feed li { color: var(--ink-soft); }
-  .feed li:first-child { color: var(--ink); font-weight: 600; }
-
-  /* ---- who's here -------------------------------------------------------- */
-  .who { margin-top: 10px; }
-  .who h4 small { font: 600 11px var(--body); color: var(--ink-soft); margin-left: 4px; }
-  .who ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; max-height: 150px; overflow: auto; }
-  .who li { display: flex; align-items: center; gap: 7px; }
-  .who li .where { margin-left: auto; font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
-  .who li.off { opacity: .55; }
-  .who li .hint { color: var(--ink-soft); font-size: 11px; }
-  .pip { width: 8px; height: 8px; border-radius: 50%; background: #c9a7b8; flex: none; }
-  .pip.on { background: #3fbf7f; }
-  .presence { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-soft); }
-  .agent.offline .tag, .agent.offline .bubble { opacity: .55; }
+  .nameplate b { font: 700 18px var(--pixel); }
+  .nameplate small { display: block; font-size: 12px; color: var(--ink-soft); min-height: 17px; }
 
   .banner {
-    margin-top: 10px;
-    padding: 8px 12px;
-    border-radius: 10px;
-    background: #fff3d6;
-    border: 2px solid #f0cf85;
+    padding: 4px 8px;
     font-size: 13px;
     text-align: center;
   }
 
+  .feed { font-size: 12px; }
+  .feed h4 { margin: 0 0 4px; font: 700 14px var(--pixel); color: var(--pink-700); }
+  .feed ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; max-height: 110px; overflow: auto; }
+  .feed li { color: var(--ink-soft); }
+  .feed li:first-child { color: var(--ink); font-weight: 600; }
+
+  .who h4 small { font: 600 11px var(--body); color: var(--ink-soft); margin-left: 4px; }
+  .who ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; max-height: 150px; overflow: auto; }
+  .who li { display: flex; align-items: center; gap: 7px; }
+  .who li img { width: 22px; height: 22px; }
+  .who li .where { margin-left: auto; font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+  .who li.off { opacity: .55; }
+  .who li .hint { color: var(--ink-soft); font-size: 11px; }
+
   /* ---- plan panel ------------------------------------------------------- */
   .plan {
-    border-left: 3px solid var(--pink-500);
-    background: #fff7fa;
+    border-left: 3px solid var(--outline);
+    background: url(assets/room/wall.png) 0 0 / 48px 48px;
     overflow: auto;
-    padding: 16px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
     animation: slide .5s ease;
   }
   @keyframes slide { from { transform: translateX(40px); opacity: 0; } }
-  .plan h3 { margin: 0; font: 700 19px var(--pixel); display: flex; gap: 8px; align-items: center; }
-  .card { background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 14px; }
+  .plan h3 { margin: 0; font: 700 18px var(--pixel); display: flex; gap: 8px; align-items: center; }
   .hero {
-    height: 120px;
-    border-radius: 10px;
+    position: relative;
+    height: 150px;
+    margin-bottom: 10px;
     display: grid;
     place-items: center;
-    font-size: 56px;
-    background:
-      radial-gradient(circle at 20% 30%, #ffe2a8 0 12%, transparent 13%),
-      radial-gradient(circle at 75% 25%, #ffd0e2 0 10%, transparent 11%),
-      linear-gradient(135deg, #f7b58f, #e27d9f 60%, #b25c8e);
-    margin-bottom: 12px;
+    background: url(assets/room/rug.png) center / 150px 150px no-repeat, url(assets/room/floor.png) 0 0 / 48px 48px;
+    border: 3px solid var(--outline);
   }
+  .hero img { width: 96px; height: 96px; filter: drop-shadow(0 6px 0 #0004); animation: bob 1.4s ease-in-out infinite; }
   .venue { margin: 0; font: 700 22px var(--pixel); color: var(--pink-700); }
   .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
-  .tags span { padding: 3px 10px; border-radius: 8px; background: var(--pink-100); font-size: 12px; }
+  .tags span { padding: 2px 8px; background: #ffd9b0; border: 2px solid var(--outline); font: 600 12px var(--pixel); }
   .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
   .people { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .people li { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; }
-  .people .av { width: 34px; height: 34px; font-size: 18px; border-radius: 9px; }
-  .people .ok { color: var(--ok); font-weight: 600; }
-  .people .shh { color: var(--pink-700); font-weight: 600; }
+  .people li { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 10px; }
+  .people .portrait { width: 40px; height: 40px; background-size: 40px 40px; }
+  .people .portrait img { width: 32px; height: 32px; }
+  .people .ok { color: var(--ok); font: 700 14px var(--pixel); }
+  .people .shh { color: var(--pink-700); font: 700 14px var(--pixel); }
   table.ledger { width: 100%; border-collapse: collapse; font-size: 13px; }
-  table.ledger td { padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  table.ledger td { padding: 3px 0; border-bottom: 1px dashed #d3865f; }
+  table.ledger td img { width: 20px; height: 20px; vertical-align: middle; margin-right: 4px; }
   table.ledger td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
   table.ledger tr.total td { font-weight: 700; border-bottom: 0; }
   .note { font-size: 12px; color: var(--ink-soft); margin: 8px 0 0; }
   .confirm {
     font: 700 20px var(--pixel);
-    color: var(--pink-700);
-    padding: 12px;
-    border-radius: 14px;
-    border: 3px solid var(--pink-500);
-    background: linear-gradient(#ffd9e8, #f8b6cf);
-    box-shadow: 0 4px 0 #d17aa0;
+    color: var(--ink);
+    padding: 10px;
+    border: 3px solid var(--outline);
+    border-radius: 6px;
+    background: #ffad5d;
+    box-shadow: inset 0 -5px 0 #d3865f, 0 4px 0 #141b1b55;
     cursor: pointer;
   }
-  .confirm:active { transform: translateY(2px); box-shadow: 0 2px 0 #d17aa0; }
-  .confirm.done { background: linear-gradient(#d9f5e5, #b5e6ca); border-color: var(--ok); color: #226b47; box-shadow: 0 4px 0 #7cc39d; }
+  .confirm:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 #d3865f; }
+  .credit { margin: 0; text-align: center; font-size: 12px; color: var(--ink-soft); }
+  .credit .team { font-size: 12px; padding: 0 5px; border-width: 2px; }
+  .confirm.done { background: #9fe0b8; box-shadow: inset 0 -5px 0 #5fb384, 0 4px 0 #141b1b55; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 
   /* ---- narrow screens --------------------------------------------------- */
-  @media (max-width: 980px) {
+  @media (max-width: 1100px) {
     .main.with-plan { grid-template-columns: 1fr; }
     .stage { grid-template-columns: 1fr; }
-    .col.right .agent { align-self: stretch; align-items: stretch; }
-    .agent, .bubble, .private { max-width: none; }
-    svg.wires { display: none; }
-    .plan { border-left: 0; border-top: 3px solid var(--pink-500); }
+    .col.right .agent { align-self: stretch; }
+    .agent { max-width: none; }
+    svg.wires, .room .pane, .room .prop { display: none; }
+    .plan { border-left: 0; border-top: 3px solid var(--outline); }
   }
 </style>
 </head>
 <body>
 <div class="window">
   <div class="titlebar">
-    <span class="cat">🐱</span>
-    <h1>Event Planner</h1>
+    <span class="team" title="Team aius">aius</span>
+    <h1>Secret Garden</h1>
+    <span class="powered">powered by <img src="assets/brand/flower-mark.png" alt=""><b>Flower</b></span>
     <div class="status" id="status"><span class="dot"></span><span id="status-text">Connecting…</span></div>
     <button class="btn" id="replay" title="Replay a simulated run, offline" onclick="fetch('/demo')">▶ Replay demo</button>
+    <span class="winbtns" aria-hidden="true"><i>–</i><i>▢</i><i class="x">✕</i></span>
   </div>
 
   <div class="main" id="main">
     <div class="stage" id="stage">
+      <div class="room" aria-hidden="true">
+        <div class="wall"></div>
+        <div class="pane l"><svg class="sky" viewBox="0 0 160 90" preserveAspectRatio="xMidYMax slice" shape-rendering="crispEdges"></svg></div>
+        <div class="pane r"><svg class="sky" viewBox="0 0 160 90" preserveAspectRatio="xMidYMax slice" shape-rendering="crispEdges"></svg></div>
+        <img class="prop" src="assets/room/bookshelf.png" alt="" style="left:31%;top:104px;width:96px">
+        <img class="prop" src="assets/room/shelf.png" alt="" style="right:31%;top:104px;width:48px">
+        <img class="prop" src="assets/room/dresser.png" alt="" style="right:28%;top:104px;width:48px">
+        <img class="prop" src="assets/room/plant.png" alt="" style="left:1%;top:104px;width:48px">
+        <img class="prop" src="assets/room/plant.png" alt="" style="right:1%;top:104px;width:48px">
+        <span class="prop sprite" style="--idle:url(assets/room/cat.png);background-size:128px 64px;left:48%;bottom:8px"></span>
+      </div>
       <svg class="wires" id="wires"></svg>
       <div class="col left" id="col-left"></div>
       <div class="col center">
-        <div class="board">
-          <h2 id="board-title">Event Planner</h2>
+        <div class="board frame">
+          <h2 id="board-title">Secret Garden</h2>
           <div class="round" id="board-round">Waiting for a prompt</div>
           <ol class="offers" id="offers"><li class="empty">Send a prompt in <code>flwr chat</code> to start planning.</li></ol>
         </div>
         <div class="hub" id="hub">
-          <span class="flower">🌸</span>
-          <b>Flower</b>
-          <small id="hub-text">Leader on the SuperLink</small>
+          <div class="scene" id="scene">
+            <img class="rug" src="assets/room/rug.png" alt="">
+            <span class="sprite leader" id="leader" style="--idle:url(assets/chars/master/idle.png);--walk:url(assets/chars/master/walk.png)"><span class="tagname">Flower</span></span>
+            <img class="table" src="assets/room/table.png" alt="">
+            <img class="centrepiece" src="assets/brand/flower-pixel.png" alt="Flower">
+            <div id="seats"></div>
+          </div>
+          <div class="nameplate frame">
+            <b><img class="brand-mark" src="assets/brand/flower-mark.png" alt="" style="width:20px;vertical-align:-3px"> Flower leader</b>
+            <small id="hub-text">Leader on the SuperLink</small>
+          </div>
         </div>
-        <div class="banner" id="banner" hidden></div>
-        <div class="feed who" id="who-box" hidden>
+        <div class="banner frame" id="banner" hidden></div>
+        <div class="feed who frame" id="who-box" hidden>
           <h4>Who's here<small id="who-count"></small></h4>
           <ul id="who"></ul>
         </div>
-        <div class="feed">
+        <div class="feed frame">
           <h4>What's happening</h4>
           <ol id="feed"></ol>
         </div>
@@ -380,24 +507,26 @@
     </div>
 
     <aside class="plan" id="plan" hidden>
-      <h3>💗 Plan</h3>
-      <div class="card">
+      <h3 class="frame">💗 Plan</h3>
+      <div class="frame">
         <h3 style="font-size:16px">✨ Everyone agreed on</h3>
-        <div class="hero" id="plan-hero">🍽️</div>
+        <div class="hero" style="margin-top:8px"><img id="plan-hero" src="assets/food/noodle.png" alt=""></div>
         <p class="venue" id="plan-venue"></p>
         <div class="tags" id="plan-tags"></div>
         <ul class="facts" id="plan-facts"></ul>
       </div>
-      <div class="card">
+      <div class="frame">
         <h3 style="font-size:16px">👥 Agent Summary</h3>
         <ul class="people" id="plan-people" style="margin-top:10px"></ul>
       </div>
-      <div class="card">
+      <div class="frame">
         <h3 style="font-size:16px">🔒 What left each laptop</h3>
         <table class="ledger" id="plan-ledger" style="margin-top:8px"></table>
         <p class="note">Yes/no answers to concrete offers, plus activity types from the guest of honour. No budget, needs, calendar or address was ever sent.</p>
       </div>
       <button class="confirm" id="confirm">✨ Confirm Plan ✨</button>
+      <p class="credit">made by <span class="team">aius</span> · built on
+        <img class="brand-mark" src="assets/brand/flower-mark.png" alt="" style="width:16px;vertical-align:-2px"> Flower</p>
     </aside>
   </div>
 </div>
@@ -408,20 +537,25 @@
    machine plus the events the leader printed, so spawning a new user with
    scripts/new_user.py needs no change here. */
 
-const PALETTE = [
-  { tint: "#fde7f0", accent: "#f5a9c6" },
-  { tint: "#e3effc", accent: "#9fc3ec" },
-  { tint: "#ece6fb", accent: "#b9a6ec" },
-  { tint: "#fff0e0", accent: "#f3bf8a" },
-  { tint: "#e4f6ec", accent: "#93cfae" },
-  { tint: "#fdf3d7", accent: "#e8cc7a" },
-  { tint: "#fde3e3", accent: "#eda2a2" },
-  { tint: "#e6f2f6", accent: "#93c4d4" },
+/* Characters from the Ninja Adventure pack (frontend/assets/chars/). A
+   profile can pick one with "character"; anyone else, remote joiners
+   included, gets a free one chosen from their name, so the same person
+   keeps the same character between runs. */
+const CAST = [
+  "princess", "villager4", "cavegirl", "cavegirl2", "egggirl", "woman",
+  "villager", "villager2", "villager3", "boy", "monk", "eskimo", "samurai",
+  "lion", "maskfrog", "inspector", "blueninja", "greenninja", "redninja",
+  "noble", "eggboy", "knight",
 ];
 
 const KIND = {
   hike: "🥾", walk: "🌅", market: "🧺", museum: "🖼️", class: "🎨",
   shopping: "🛍️", sport: "🧗", dinner: "🍽️", music: "🎷",
+};
+/* What the plan card shows, as a pixel item, for each kind of activity. */
+const KIND_ITEM = {
+  dinner: "sushi", market: "onigiri", music: "tealeaf", museum: "fortunecookie",
+  class: "honey", shopping: "fortunecookie", walk: "onigiri", hike: "fish", sport: "fish",
 };
 const TAG = {
   nature: "🌿", city: "🏙️", morning: "🌅", evening: "🌙",
@@ -451,11 +585,39 @@ const titleCase = s => String(s).replace(/_/g, " ").replace(/\b\w/g, c => c.toUp
 const hour = h => { const n = +h % 24; return `${n % 12 || 12}:00 ${n < 12 ? "AM" : "PM"}`; };
 const slotText = slot => { const [a, b] = slot.split("-"); return `${hour(a)} – ${hour(b)}`; };
 const nonEmpty = v => v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && !v.length);
+const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
-let profiles = {};   // user slug -> { display_name, emoji, role, private }
+/* The sunset city outside the room's windows, drawn once as pixel rects. */
+function drawSkyline(svg, seed) {
+  let s = seed;
+  const rand = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const rect = (x, y, w, h, fill) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`;
+  let out = `<defs><linearGradient id="sunset${seed}" x2="0" y2="1">
+      <stop offset="0" stop-color="#f59fbe"/><stop offset=".5" stop-color="#fbc1a8"/>
+      <stop offset=".75" stop-color="#ffd9b0"/><stop offset="1" stop-color="#e8b4dc"/></linearGradient></defs>
+    <rect width="160" height="90" fill="url(#sunset${seed})"/>
+    <circle cx="118" cy="52" r="11" fill="#ffe7b8"/>
+    ${rect(12, 14, 22, 3, "#fff9")}${rect(18, 11, 12, 3, "#fff9")}${rect(92, 20, 18, 3, "#fff8")}`;
+  for (const [color, low, high, lit] of [["#c79bc3", 22, 40, false], ["#a978ad", 14, 34, true]]) {
+    for (let x = -4; x < 160; ) {
+      const w = 10 + Math.floor(rand() * 9), h = low + Math.floor(rand() * (high - low)), y = 90 - h;
+      out += rect(x, y, w, h, color);
+      if (lit) {
+        for (let wy = y + 4; wy < 87; wy += 5)
+          for (let wx = x + 2; wx < x + w - 2; wx += 4)
+            if (rand() < 0.45) out += rect(wx, wy, 2, 2, "#ffe7a3");
+      }
+      x += w + Math.floor(rand() * 4);
+    }
+  }
+  svg.innerHTML = out;
+}
+document.querySelectorAll(".sky").forEach((svg, i) => drawSkyline(svg, 7 + i * 131));
+
+let profiles = {};   // user slug -> { display_name, emoji, character, role, private }
 let REMOTE = {};     // users who joined from another laptop; no profile on this disk
 let NODES = null;    // latest SuperNode list from the server, null until one arrives
-let PEOPLE = {};     // user slug -> { name, emoji, tint, accent, role }
+let PEOPLE = {};     // user slug -> { name, char, role, remote }
 let ORDER = [];      // user slugs, in the order the columns show them
 let S = fresh();
 function fresh() {
@@ -478,21 +640,42 @@ function adoptRemote(users) {
   rebuild([...ORDER, ...extra]);
 }
 
+/* Profile picks first, then everyone else in order, never sharing a
+   character while any are left. */
+function castCharacters(order) {
+  const taken = new Set(), chosen = {};
+  for (const u of order) {
+    const pick = profiles[u]?.character;
+    if (CAST.includes(pick) && !taken.has(pick)) { chosen[u] = pick; taken.add(pick); }
+  }
+  for (const u of order) {
+    if (chosen[u]) continue;
+    let i = hash(u) % CAST.length;
+    for (let tries = 0; taken.has(CAST[i]) && tries < CAST.length; tries++) i = (i + 1) % CAST.length;
+    chosen[u] = CAST[i];
+    taken.add(CAST[i]);
+  }
+  return chosen;
+}
+
 function rebuild(order) {
   ORDER = [...new Set(order)];
+  const cast = castCharacters(ORDER);
   PEOPLE = {};
-  ORDER.forEach((u, i) => {
+  for (const u of ORDER) {
     const entry = profiles[u] || {};
     PEOPLE[u] = {
       name: entry.display_name || titleCase(u),
-      emoji: entry.emoji || (entry.remote ? "💻" : "🙂"),
+      char: cast[u],
       role: entry.role || "participant",
       remote: !!entry.remote,
-      ...PALETTE[i % PALETTE.length],
     };
-  });
+  }
   buildStations();
 }
+
+const art = (p, file) => `assets/chars/${PEOPLE[p]?.char || "villager"}/${file}.png`;
+const faceImg = p => `<img src="${art(p, "face")}" alt="">`;
 
 /* ---- rendering ---------------------------------------------------------- */
 
@@ -507,19 +690,56 @@ function buildStations() {
   for (const side of ["left", "right"]) {
     $(`col-${side}`).innerHTML = cols[side].map(p => {
       const who = PEOPLE[p];
-      return `<section class="agent" id="agent-${p}" style="--tint:${who.tint};--accent:${who.accent}">
-        <header class="tag"><span class="av" id="av-${p}">${who.emoji}</span>
-          <span><b>${esc(who.name)}</b><small id="role-${p}">${who.remote ? "Remote · another laptop" : who.role === "honouree" ? "Guest of honour" : "Participant"}</small>
-          <span class="presence" id="presence-${p}"></span></span></header>
-        <div class="bubble" id="bubble-${p}">Waiting for the leader…</div>
+      return `<section class="agent" id="agent-${p}">
+        <div class="dialog frame">
+          <span class="portrait" id="av-${p}">${faceImg(p)}</span>
+          <div>
+            <div class="who"><b>${esc(who.name)}</b>
+              <small id="role-${p}">${who.remote ? "Remote · another laptop" : who.role === "honouree" ? "Guest of honour" : "Participant"}</small>
+              <span class="presence" id="presence-${p}"></span></div>
+            <div class="bubble" id="bubble-${p}">Waiting for the leader…</div>
+          </div>
+        </div>
         <div class="private" id="private-${p}"></div>
       </section>`;
     }).join("");
   }
+  renderSeats();
   renderPrivate();
   renderPresence();
   renderWho();
   requestAnimationFrame(drawWires);
+}
+
+/* Everyone sits around the table: spread along the sides and front of an
+   ellipse, each turned to face the middle. */
+function renderSeats() {
+  const n = ORDER.length;
+  $("seats").innerHTML = ORDER.map((p, i) => {
+    const deg = n === 1 ? 90 : 168 - i * (156 / (n - 1));
+    const a = deg * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+    const dir = Math.abs(cos) > Math.abs(sin) * 0.8 ? (cos > 0 ? 2 : 3) : 1;
+    const left = `calc(50% + ${(cos * 40).toFixed(1)}% - 32px)`;
+    const top = `${Math.round(150 + sin * 90 - 26)}px`;
+    return `<span class="sprite" id="sprite-${p}" style="left:${left};top:${top};--dir:${dir};
+        --idle:url(${art(p, "idle")});--walk:url(${art(p, "walk")})">
+      <span class="emote" id="emote-${p}"></span><span class="tagname">${esc(PEOPLE[p].name)}</span></span>`;
+  }).join("");
+}
+
+/* What a character is doing: think (walks on the spot, "..." bubble),
+   yes / no (a full or empty heart), shh (the surprise), or nothing. */
+function mood(p, kind) {
+  const sprite = $(`sprite-${p}`), emote = $(`emote-${p}`);
+  if (!sprite) return;
+  sprite.classList.toggle("busy", kind === "think");
+  emote.className = `emote ${kind || ""}`;
+}
+
+function cheer(p) {
+  const sprite = $(`sprite-${p}`);
+  if (!sprite) return;
+  sprite.classList.remove("hop"); void sprite.offsetWidth; sprite.classList.add("hop");
 }
 
 function renderPresence() {
@@ -531,6 +751,7 @@ function renderPresence() {
     const on = online.has(p);
     el.innerHTML = `<i class="pip ${on ? "on" : ""}"></i>${on ? "online" : "not joined"}`;
     $(`agent-${p}`).classList.toggle("offline", !on);
+    $(`sprite-${p}`)?.classList.toggle("away", !on);
   }
 }
 
@@ -542,7 +763,7 @@ function renderWho() {
   $("who").innerHTML = NODES.length ? NODES.map(n => {
     const who = n.user && PEOPLE[n.user];
     const label = who
-      ? `${who.emoji} <b>${esc(who.name)}</b>`
+      ? `${faceImg(n.user)} <b>${esc(who.name)}</b>`
       : `💻 Node …${esc(n.id.slice(-4))} <span class="hint">name shown after the first prompt</span>`;
     return `<li class="${n.status === "online" ? "" : "off"}"><i class="pip ${n.status === "online" ? "on" : ""}"></i>
       <span>${label}</span><span class="where">${n.local ? "this laptop" : "remote"} · ${esc(n.status)}</span></li>`;
@@ -586,6 +807,7 @@ function feed(text) {
 function hub(text, busy = true) {
   $("hub-text").textContent = text;
   $("hub").classList.toggle("busy", busy);
+  $("leader").classList.toggle("busy", busy);
 }
 
 function setStatus(text, live) {
@@ -602,21 +824,21 @@ function renderBoard(tallies, voters, winner) {
   $("board-round").textContent = `Round ${S.round} · ${S.offers.length} offers`;
   $("offers").innerHTML = S.offers.map((o, i) => {
     const t = tallies ? tallies[i] : null;
-    const dots = tallies ? Array.from({ length: voters }, (_, k) => `<i class="${k < t ? "y" : ""}"></i>`).join("") : "";
+    const hearts = tallies ? Array.from({ length: voters }, (_, k) => `<i class="${k < t ? "y" : ""}"></i>`).join("") : "";
     const cls = winner === undefined ? "" : (i === winner ? "win" : "dim");
     return `<li class="offer ${cls}"><span class="n">${i + 1}</span>
       <span><b>${esc(o.name)}</b> ${KIND[o.kind] || "✨"}<br><span class="meta">${slotText(o.slot)} · ${esc(o.price_band)} · ${esc(offerTags(o))}</span></span>
-      <span class="dots">${dots}</span></li>`;
+      <span class="dots">${hearts}</span></li>`;
   }).join("");
 }
 
-/* ---- wires between the hub and each agent --------------------------------- */
+/* ---- wires between the table and each agent's window ---------------------- */
 
 function drawWires() {
   const stage = $("stage"), svg = $("wires");
   const box = stage.getBoundingClientRect();
   svg.setAttribute("viewBox", `0 0 ${stage.scrollWidth} ${stage.scrollHeight}`);
-  const hubR = $("hub").getBoundingClientRect();
+  const hubR = $("scene").getBoundingClientRect();
   const hx = hubR.left + hubR.width / 2 - box.left + stage.scrollLeft;
   const hy = hubR.top + hubR.height / 2 - box.top + stage.scrollTop;
   svg.innerHTML = ORDER.map(p => {
@@ -643,7 +865,7 @@ function pulse(p, dir) {
 /* ---- plan panel ----------------------------------------------------------- */
 
 function showPlan(a, info) {
-  $("plan-hero").textContent = KIND[a.kind] || "✨";
+  $("plan-hero").src = `assets/food/${KIND_ITEM[a.kind] || "noodle"}.png`;
   $("plan-venue").textContent = a.name;
   const tags = [titleCase(a.kind), ...(a.tags || []), a.price_band,
     `${titleCase(a.atmosphere)} atmosphere`, titleCase(a.area)];
@@ -669,14 +891,14 @@ function renderPeople() {
     const voted = id && S.guests.includes(id);
     const status = isHon && !voted ? '<span class="shh">🎁 kept a surprise</span>'
       : voted ? '<span class="ok">✓ works for me!</span>' : '<span class="more">—</span>';
-    return `<li><span class="av" style="--tint:${PEOPLE[p].tint};--accent:${PEOPLE[p].accent}">${PEOPLE[p].emoji}</span><span>${esc(PEOPLE[p].name)}</span>${status}</li>`;
+    return `<li><span class="portrait">${faceImg(p)}</span><span>${esc(PEOPLE[p].name)}</span>${status}</li>`;
   }).join("");
 }
 
 function renderLedger(spend) {
   const rows = Object.entries(spend).map(([id, bits]) => {
     const p = S.nodes[id];
-    return `<tr><td>${p && PEOPLE[p] ? PEOPLE[p].emoji + " " + esc(PEOPLE[p].name) : "Node " + String(id).slice(-4)}</td><td>${bits.toFixed(0)} bits</td></tr>`;
+    return `<tr><td>${p && PEOPLE[p] ? faceImg(p) + esc(PEOPLE[p].name) : "Node " + String(id).slice(-4)}</td><td>${bits.toFixed(0)} bits</td></tr>`;
   });
   const total = Object.values(spend).reduce((a, b) => a + b, 0);
   $("plan-ledger").innerHTML = rows.join("") + `<tr class="total"><td>Total</td><td>${total.toFixed(0)} bits</td></tr>`;
@@ -686,6 +908,7 @@ $("confirm").onclick = () => {
   const b = $("confirm");
   b.classList.add("done");
   b.textContent = "✓ Plan confirmed! 🎉";
+  for (const p of ORDER) cheer(p);
 };
 
 /* ---- event handling -------------------------------------------------------- */
@@ -705,7 +928,7 @@ function reset() {
   $("offers").innerHTML = '<li class="empty">Starting…</li>';
   $("board-round").textContent = "Getting everyone together";
   $("feed").innerHTML = "";
-  for (const p of ORDER) say(p, "Waiting for the leader…");
+  for (const p of ORDER) { say(p, "Waiting for the leader…"); mood(p, null); }
   hub("Leader on the SuperLink", false);
   requestAnimationFrame(drawWires);
 }
@@ -763,7 +986,7 @@ const handlers = {
   ask(e) {
     for (const id of e.nodes) {
       const p = userOf(id);
-      if (p) pulse(p, "out");
+      if (p) { pulse(p, "out"); mood(p, "think"); }
     }
     if (e.phase === "identity") {
       hub("Asking who is here");
@@ -779,7 +1002,10 @@ const handlers = {
         if (p) say(p, `Checking ${S.offers.length} offers against my private calendar, budget &amp; needs${typing}`);
       }
       const hon = S.honoree && userOf(S.honoree);
-      if (hon && !e.nodes.includes(S.honoree)) say(hon, "🙈 Not peeking, it's a surprise!", "I never see the shortlist");
+      if (hon && !e.nodes.includes(S.honoree)) {
+        say(hon, "🙈 Not peeking, it's a surprise!", "I never see the shortlist");
+        mood(hon, "shh");
+      }
       hub(`Asking ${e.nodes.length} ${e.nodes.length === 1 ? "person" : "people"} about ${S.offers.length} offers`);
     } else if (e.phase === "plan") {
       for (const id of e.nodes) { const p = userOf(id); if (p) say(p, `Got the booking${typing}`); }
@@ -792,29 +1018,32 @@ const handlers = {
     const p = userOf(e.node);
     if (p) pulse(p, "in");
     if (e.status !== "ok") {
-      if (p) say(p, `⚠️ Couldn't answer (${e.status})`, "The leader gets no reply, so no information");
+      if (p) { say(p, `⚠️ Couldn't answer (${e.status})`, "The leader gets no reply, so no information"); mood(p, "no"); }
       feed(`${nameOf(e.node)}: no valid answer (${e.status})`);
       return;
     }
     S.bits[e.node] = (S.bits[e.node] || 0) + (e.bits || 0);
     if (e.phase === "identity") {
-      if (p) say(p, `I'm ${esc(PEOPLE[p]?.name || e.fields.user)} 🙋`, "0 bits: my name is configuration, not private data");
+      if (p) { say(p, `I'm ${esc(PEOPLE[p]?.name || e.fields.user)} 🙋`, "0 bits: my name is configuration, not private data"); mood(p, null); cheer(p); }
     } else if (e.phase === "wishes") {
       const f = e.fields;
       const wants = (f.activity_prefs || []).map(t => `${TAG[t] || ""} ${t}`).join(", ");
       const parts = [wants && `something ${wants}`, f.atmosphere && `${f.atmosphere}`,
         f.prefers_new_place && "somewhere new"].filter(Boolean);
-      if (p) say(p, `I'd love ${esc(parts.join(", "))} please 💝`, `Shared ${e.bits} bits: activity types only`);
+      if (p) { say(p, `I'd love ${esc(parts.join(", "))} please 💝`, `Shared ${e.bits} bits: activity types only`); mood(p, "yes"); }
       feed(`${nameOf(e.node)} shared what kinds of thing they enjoy`);
     } else if (e.phase === "veto") {
       const v = e.fields.verdicts;
       S.verdicts[e.node] = v;
       const yes = v.filter(Boolean).length;
-      const chips = v.map((ok, i) => `<span class="chip ${ok ? "yes" : ""}">${i + 1} ${ok ? "✓" : "✗"}</span>`).join("");
-      if (p) say(p, `${yes ? `✓ ${yes} of ${v.length} work for me` : "✗ None of these work for me"}<div class="chips">${chips}</div>`, "Reasons stay on my laptop 🔒");
+      const chips = v.map((ok, i) => `<span class="chip">${i + 1}<img src="assets/hud/${ok ? "yes" : "no"}.png" alt="${ok ? "yes" : "no"}"></span>`).join("");
+      if (p) {
+        say(p, `${yes ? `${yes} of ${v.length} work for me` : "None of these work for me"}<div class="chips">${chips}</div>`, "Reasons stay on my laptop 🔒");
+        mood(p, yes ? "yes" : "no");
+      }
       feed(`${nameOf(e.node)} answered: ${yes} of ${v.length} work`);
     } else if (e.phase === "plan") {
-      if (p) say(p, "Noted! See you there 🥂", "Sent 1 bit: acknowledged");
+      if (p) { say(p, "Noted! See you there 🥂", "Sent 1 bit: acknowledged"); mood(p, "yes"); cheer(p); }
     }
   },
 

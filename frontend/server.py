@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import os
 import queue
 import re
@@ -28,8 +29,10 @@ import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import unquote
 
 UI_DIR = Path(__file__).resolve().parent
+ASSETS_DIR = UI_DIR / "assets"
 ROOT = UI_DIR.parent
 BACKEND_DIR = ROOT / "backend"
 LOG_DIR = ROOT / "logs"
@@ -93,16 +96,24 @@ class Hub:
 HUB = Hub()
 
 
-def profiles() -> dict:
+# False with --no-local: this laptop runs no agents of its own, so its profiles
+# are left out and the console shows only the agents that actually join.
+SHOW_LOCAL = True
+
+
+def profiles(*, local: bool | None = None) -> dict:
     """Narrator view of every user on this machine. Never sent anywhere.
 
     Read straight off disk, so a user you spawn with scripts/new_user.py
     shows up in the console with no change here.
     """
+    if not (SHOW_LOCAL if local is None else local):
+        return {}
     return {
         user: {
             "display_name": entry.get("display_name", user.title()),
             "emoji": entry.get("emoji", "🙂"),
+            "character": entry.get("character"),
             "role": entry.get("role", "participant"),
             "private": entry.get("private", {}),
         }
@@ -313,7 +324,8 @@ def demo(url: str, speed: float = 1.0) -> None:
         env={**os.environ, "PYTHONPATH": str(BACKEND_DIR)},
     ).stdout
     events = [e for e in map(parse, out.splitlines()) if e]
-    HUB.reset(run_id="demo", source="simulate", profiles=profiles())
+    # The offline replay simulates this laptop's profiles, so it always shows them.
+    HUB.reset(run_id="demo", source="simulate", profiles=profiles(local=True))
     show(url)
     for _ in range(50):  # give the window a moment to connect
         if HUB.has_clients():
@@ -341,6 +353,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path.startswith("/assets/"):
+            self.asset()
         elif self.path == "/events":
             self.stream()
         elif self.path == "/demo":
@@ -349,6 +363,21 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
         else:
             self.send_error(404)
+
+    def asset(self) -> None:
+        """Serve the pixel art in frontend/assets/, and nothing outside it."""
+        relative = unquote(self.path.split("?", 1)[0].removeprefix("/assets/"))
+        target = (ASSETS_DIR / relative).resolve()
+        if not target.is_relative_to(ASSETS_DIR) or not target.is_file():
+            self.send_error(404)
+            return
+        body = target.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", mimetypes.guess_type(target.name)[0] or "application/octet-stream")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "max-age=3600")
+        self.end_headers()
+        self.wfile.write(body)
 
     def stream(self) -> None:
         self.send_response(200)
@@ -385,8 +414,12 @@ def main() -> None:
                         help="demo replay speed multiplier (2 = twice as fast)")
     parser.add_argument("--run", metavar="RUN_ID",
                         help="also show this run, even if it has already finished")
+    parser.add_argument("--no-local", action="store_true",
+                        help="hide this laptop's user profiles; show only agents that join")
     args = parser.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
+    global SHOW_LOCAL
+    SHOW_LOCAL = not args.no_local
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.url = f"http://127.0.0.1:{args.port}/"
