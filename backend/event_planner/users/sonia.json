@@ -1,0 +1,35 @@
+{
+  "display_name": "Sonia",
+  "emoji": "🙂",
+  "role": "participant",
+  "private": {
+    "calendar": [
+      "09:00-10:30 standup, 12:00 - 14:00 doctor apt"
+    ],
+    "budget_usd": 50,
+    "home_area": "downtown_palo_alto",
+    "curfew_hour": 22,
+    "needs": [
+      "vegan_option"
+    ],
+    "like_tags": [
+      "morning",
+      "evening",
+      "relaxing",
+      "foodie",
+      "shopping"
+    ],
+    "avoid_tags": [
+      "nature",
+      "active"
+    ],
+    "avoid_areas": [
+      "el_camino"
+    ],
+    "avoid_atmospheres": [
+      "formal"
+    ],
+    "dislikes": [],
+    "notes": "for religious reasons, i cannot eat pasta today"
+  }
+}
