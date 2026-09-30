@@ -17,10 +17,10 @@ Secret Garden won **1st Place at the Collaborative Agent Hackathon @ Stanford**,
 
 Built by **Alexa Lowe, Ieva Bagdonaviciute, Uzma Hamid, and Sonia Fareidooni**.
 
-[![Secret Garden: three laptops agree on a dinner and each gives away one bit](docs/media/demo.gif)](docs/media/demo.mp4)
+[![Secret Garden: three agents on three laptops agree on a surprise birthday dinner](docs/media/demo.gif)](docs/media/demo.mp4)
 [![Creating a profile and joining from another laptop](docs/media/new_profile.gif)](docs/media/new_profile.mp4)
 
-<sub>▶ Top: a full run — click for the 4½ min video. Bottom: creating a user profile with preferences.</sub>
+<sub>▶ Top: a full run — click for the 2 min video. Bottom: creating a user profile with preferences.</sub>
 
 </div>
 
@@ -30,23 +30,28 @@ Built by **Alexa Lowe, Ieva Bagdonaviciute, Uzma Hamid, and Sonia Fareidooni**.
 
 The organiser types one sentence into `flwr chat`:
 
-> *Plan a relaxing foodie evening in the city for Sam's birthday.*
+> *Plan a relaxing foodie evening in the city for Sonia's birthday. Keep it a surprise.*
 
-Three friends have joined from **their own laptops**. Their profiles never
-leave those machines. The leader turns the brief into tags
+Alexa, Ieva and Sonia have each joined from **their own laptop**. Their
+profiles never leave those machines. The leader turns the brief into tags
 (`city · evening · relaxing · foodie`), lines up concrete offers, and asks each
 agent one question per offer: *could you do this, yes or no?*
 
+Sonia is the guest of honour, so she only shares what kinds of things she
+enjoys. She never sees the shortlist, and the leader tells everyone the booking
+except her. Her agent's card just says *"Not peeking, it's a surprise!"*
+
 <p align="center">
-  <img src="docs/media/result.png" alt="The console after the run: Ozora Handroll Bar, 5 to 7 PM, everyone agreed, 1 bit per laptop" width="900">
+  <img src="docs/media/result.png" alt="The console after the run: Ozora Handroll Bar, 5 to 7 PM, Alexa and Ieva agreed, Sonia's surprise kept" width="900">
 </p>
 
 | | |
 | --- | --- |
 | 🍣 **The plan** | Ozora Handroll Bar, 5:00–7:00 PM, downtown Palo Alto |
 | 🔎 **How fast** | Found in round 1, after 5 of 55 possible offers |
-| ✅ **Agreement** | Everyone said yes |
-| 🔒 **What left each laptop** | **1 bit** each, **3 bits** in total |
+| ✅ **Agreement** | Alexa (4 of 5 offers work) and Ieva (5 of 5) both said yes to the first |
+| 🎁 **The surprise** | Kept: Sonia's agent never saw the plan |
+| 🔒 **What left each laptop** | Only yes/no answers to concrete offers, plus Sonia's activity types |
 
 Nobody stated a budget, a price range, their free hours, an allergy or a home
 address. All of those decided the booking, and none of them crossed the
